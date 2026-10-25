@@ -1,0 +1,5 @@
+streamlit>=1.40.0
+gspread>=6.1.0
+google-auth>=2.30.0
+pandas>=2.0.0
+pillow>=10.0.0

@@ -1,0 +1,201 @@
+id,week,question,option_a,option_b,option_c,option_d,correct,xp,active,difficulty
+q1,Week 1,She ___ a student.,is,are,am,be,A,10,TRUE,1
+q2,Week 1,They ___ playing football in the garden.,is,are,am,be,B,10,TRUE,1
+q3,Week 1,I ___ happy today.,is,are,am,be,C,10,TRUE,1
+q4,Week 1,___ you ready for the test?,Is,Are,Am,Be,B,10,TRUE,1
+q5,Week 1,My cat ___ sleeping on the sofa.,is,are,am,be,A,10,TRUE,1
+q6,Week 1,We ___ from Sri Lanka.,is,are,am,be,B,10,TRUE,1
+q7,Week 1,Where ___ your book?,is,are,am,be,A,10,TRUE,1
+q8,Week 1,The apples ___ sweet and red.,is,are,am,be,B,10,TRUE,1
+q9,Week 1,___ he your brother?,Is,Are,Am,Be,A,10,TRUE,1
+q10,Week 1,These flowers ___ very beautiful.,is,are,am,be,B,10,TRUE,1
+q11,Week 2,He ___ up early every morning.,wake,wakes,waking,woke,B,10,TRUE,1
+q12,Week 2,Do you ___ English on Mondays?,speak,speaks,speaking,spoke,A,10,TRUE,1
+q13,Week 2,My mother ___ delicious food.,cook,cooks,cooking,cooked,B,10,TRUE,1
+q14,Week 2,Birds ___ in the sky.,fly,flies,flying,flew,A,10,TRUE,1
+q15,Week 2,She does not ___ ice cream.,like,likes,liking,liked,A,10,TRUE,1
+q16,Week 2,What time ___ you go to school?,do,does,is,are,A,10,TRUE,1
+q17,Week 2,Dogs ___ fast.,run,runs,running,ran,A,10,TRUE,1
+q18,Week 2,Tom ___ TV in the evening.,watch,watches,watching,watched,B,10,TRUE,1
+q19,Week 2,We ___ football after school.,play,plays,playing,played,A,10,TRUE,1
+q20,Week 2,___ your father work in an office?,Do,Does,Is,Are,B,10,TRUE,1
+q21,Week 3,This is my book. Give it to ___ .,I,me,my,mine,B,10,TRUE,1
+q22,Week 3,Sarah lost ___ pencil case.,his,her,their,its,B,10,TRUE,1
+q23,Week 3,Look at ___ over there! They are waving.,them,they,their,theirs,A,10,TRUE,1
+q24,Week 3,Is this pen yours? Yes, it is ___ .,my,your,mine,her,C,10,TRUE,2
+q25,Week 3,We love ___ teacher very much.,our,ours,us,we,A,10,TRUE,1
+q26,Week 3,The dog is wagging ___ tail.,its,it's,her,his,A,10,TRUE,2
+q27,Week 3,John and David brought ___ bags.,his,her,their,our,C,10,TRUE,1
+q28,Week 3,Can you help ___ with this homework?,I,my,me,mine,C,10,TRUE,1
+q29,Week 3,These shoes are ___ . They belong to me.,yours,mine,his,hers,B,10,TRUE,2
+q30,Week 3,She gave ___ a wonderful gift.,we,us,our,ours,B,10,TRUE,1
+q31,Week 4,The cat is hiding ___ the table.,in,on,under,at,C,10,TRUE,1
+q32,Week 4,My birthday is ___ July.,in,on,at,by,A,10,TRUE,1
+q33,Week 4,We have school ___ Mondays.,in,on,at,under,B,10,TRUE,1
+q34,Week 4,The picture is hanging ___ the wall.,in,on,at,over,B,10,TRUE,1
+q35,Week 4,Meet me ___ 5 o'clock.,in,on,at,by,C,10,TRUE,1
+q36,Week 4,The keys are ___ my pocket.,in,on,at,under,A,10,TRUE,1
+q37,Week 4,There is a park ___ our school.,behind,in,on,at,A,10,TRUE,2
+q38,Week 4,He was born ___ 2012.,in,on,at,by,A,10,TRUE,1
+q39,Week 4,The bookstore is ___ the bank and the bakery.,next,between,under,on,B,10,TRUE,2
+q40,Week 4,Sit down ___ your chair.,in,on,at,by,B,10,TRUE,1
+q41,Week 5,Yesterday, I ___ to the cinema.,go,goes,went,going,C,10,TRUE,1
+q42,Week 5,She ___ a delicious cake last night.,bake,bakes,baked,baking,C,10,TRUE,1
+q43,Week 5,They ___ soccer last weekend.,play,plays,playing,played,D,10,TRUE,1
+q44,Week 5,What ___ you do yesterday?,do,does,did,done,C,10,TRUE,1
+q45,Week 5,He ___ not come to school yesterday.,do,does,did,done,C,10,TRUE,1
+q46,Week 5,We ___ a lot of animals at the zoo.,see,sees,saw,seeing,C,10,TRUE,1
+q47,Week 5,The baby ___ all night long.,cry,cries,cried,crying,C,10,TRUE,1
+q48,Week 5,Who ___ the window?,break,breaks,broke,breaking,C,10,TRUE,2
+q49,Week 5,I ___ a great book last week.,read,reads,reading,red,A,10,TRUE,2
+q50,Week 5,She ___ her homework an hour ago.,finish,finishes,finished,finishing,C,10,TRUE,1
+q51,Week 6,Look! The children ___ in the park now.,play,plays,are playing,played,C,10,TRUE,2
+q52,Week 6,She ___ a letter at the moment.,writes,is writing,wrote,write,B,10,TRUE,2
+q53,Week 6,___ it raining outside?,Is,Are,Does,Do,A,10,TRUE,2
+q54,Week 6,They ___ TV right now.,watch,watches,are watching,watched,C,10,TRUE,2
+q55,Week 6,I ___ my homework at the moment.,do,does,am doing,did,C,10,TRUE,2
+q56,Week 6,What ___ you doing?,is,are,am,do,B,10,TRUE,2
+q57,Week 6,The dog ___ under the tree.,sleeps,is sleeping,slept,sleep,B,10,TRUE,2
+q58,Week 6,We ___ dinner now.,have,has,are having,had,C,10,TRUE,2
+q59,Week 6,Listen! Someone ___ the door.,knocks,is knocking,knocked,knock,B,10,TRUE,3
+q60,Week 6,He ___ not working today.,is,are,am,be,A,10,TRUE,2
+q61,Week 7,I need ___ apple and ___ orange.,a / an,an / a,a / a,an / an,A,10,TRUE,2
+q62,Week 7,She is ___ honest girl.,a,an,the,–,B,10,TRUE,3
+q63,Week 7,___ sun rises in the east.,A,An,The,–,C,10,TRUE,2
+q64,Week 7,There is ___ book on the table.,a,an,the,–,A,10,TRUE,1
+q65,Week 7,He plays ___ guitar very well.,a,an,the,–,C,10,TRUE,3
+q66,Week 7,I saw ___ elephant at the zoo.,a,an,the,–,B,10,TRUE,2
+q67,Week 7,___ Earth is round.,A,An,The,–,C,10,TRUE,2
+q68,Week 7,She wants to be ___ doctor.,a,an,the,–,A,10,TRUE,1
+q69,Week 7,Please open ___ window.,a,an,the,–,C,10,TRUE,2
+q70,Week 7,This is ___ useful tool.,a,an,the,–,A,10,TRUE,3
+q71,Week 8,There are three ___ on the table.,box,boxs,boxes,boxies,C,10,TRUE,1
+q72,Week 8,My ___ are blue.,tooth,tooths,teeth,toothes,C,10,TRUE,2
+q73,Week 8,She has two ___ .,child,childs,children,childrens,C,10,TRUE,2
+q74,Week 8,The ___ are flying high.,bird,birds,birdies,birdes,B,10,TRUE,1
+q75,Week 8,I bought some ___ yesterday.,tomato,tomatos,tomatoes,tomatoe,C,10,TRUE,2
+q76,Week 8,There are many ___ in the forest.,leaf,leafs,leaves,leavs,C,10,TRUE,3
+q77,Week 8,He has two ___ .,foot,foots,feet,feets,C,10,TRUE,2
+q78,Week 8,These ___ belong to me.,key,keys,keyes,keies,B,10,TRUE,1
+q79,Week 8,The ___ are barking loudly.,dog,dogs,doges,doggies,B,10,TRUE,1
+q80,Week 8,She lost her ___ .,knife,knifes,knives,knive,C,10,TRUE,3
+q81,Week 9,___ you swim?,Can,Do,Are,Is,A,10,TRUE,1
+q82,Week 9,She ___ speak French.,can,cans,could,is,A,10,TRUE,1
+q83,Week 9,___ I open the window?,Can,Do,Are,Does,A,10,TRUE,2
+q84,Week 9,He ___ ride a bicycle when he was five.,can,could,is,was,B,10,TRUE,3
+q85,Week 9,They ___ not come to the party yesterday.,can,could,are,were,B,10,TRUE,3
+q86,Week 9,___ you help me please?,Can,Do,Are,Is,A,10,TRUE,1
+q87,Week 9,Birds ___ fly but fish cannot.,can,could,are,do,A,10,TRUE,2
+q88,Week 9,I ___ see the mountains from here.,can,could,am,do,A,10,TRUE,2
+q89,Week 9,She ___ not walk until she was two.,can,could,is,was,B,10,TRUE,3
+q90,Week 9,___ we go to the park?,Can,Do,Are,Is,A,10,TRUE,1
+q91,Week 10,She is a ___ girl.,beauty,beautiful,beautifully,beautify,B,10,TRUE,2
+q92,Week 10,He runs ___ .,quick,quickly,quicker,quickest,B,10,TRUE,2
+q93,Week 10,This is a ___ book.,interest,interesting,interested,interestingly,B,10,TRUE,2
+q94,Week 10,She sings ___ .,beautiful,beautifully,beauty,beautify,B,10,TRUE,2
+q95,Week 10,The movie was very ___ .,bore,boring,bored,boringly,B,10,TRUE,3
+q96,Week 10,He is a ___ driver.,careful,carefully,care,caring,A,10,TRUE,2
+q97,Week 10,Please speak ___ .,slow,slowly,slower,slowest,B,10,TRUE,2
+q98,Week 10,I feel ___ today.,happy,happily,happiness,happier,A,10,TRUE,2
+q99,Week 10,She answered the question ___ .,correct,correctly,correction,correcting,B,10,TRUE,3
+q100,Week 10,It was a ___ day.,sun,sunny,sunly,sunshine,B,10,TRUE,2
+q101,Week 11,I ___ visit my grandparents next week.,will,am,was,did,A,10,TRUE,2
+q102,Week 11,She ___ going to study medicine.,is,are,am,be,A,10,TRUE,2
+q103,Week 11,___ you come to my party?,Will,Do,Are,Did,A,10,TRUE,2
+q104,Week 11,They ___ buy a new car next month.,will,are,is,do,A,10,TRUE,2
+q105,Week 11,Look at those clouds! It ___ rain soon.,will,is going to,are,does,B,10,TRUE,3
+q106,Week 11,I ___ help you with your bags.,will,am,was,did,A,10,TRUE,2
+q107,Week 11,We ___ having a picnic this Sunday.,are,is,will,do,A,10,TRUE,3
+q108,Week 11,He ___ not go to school tomorrow.,will,is,are,does,A,10,TRUE,2
+q109,Week 11,What ___ you do after school?,will,are,do,did,A,10,TRUE,2
+q110,Week 11,She is ___ to start a new job.,going,go,goes,went,A,10,TRUE,3
+q111,Week 12,This book is ___ than that one.,interesting,more interesting,most interesting,interestinger,B,10,TRUE,3
+q112,Week 12,She is the ___ student in the class.,tall,taller,tallest,more tall,C,10,TRUE,3
+q113,Week 12,My house is ___ than yours.,big,bigger,biggest,more big,B,10,TRUE,2
+q114,Week 12,This is the ___ day of my life.,happy,happier,happiest,more happy,C,10,TRUE,3
+q115,Week 12,He runs ___ than me.,fast,faster,fastest,more fast,B,10,TRUE,2
+q116,Week 12,English is ___ than Maths for me.,easy,easier,easiest,more easy,B,10,TRUE,2
+q117,Week 12,This is the ___ movie I have ever seen.,good,better,best,more good,C,10,TRUE,3
+q118,Week 12,She is ___ than her sister.,intelligent,more intelligent,most intelligent,intelligenter,B,10,TRUE,3
+q119,Week 12,Today is ___ than yesterday.,hot,hotter,hottest,more hot,B,10,TRUE,2
+q120,Week 12,This is the ___ restaurant in town.,bad,worse,worst,more bad,C,10,TRUE,3
+q121,Week 13,___ a book on the table.,There is,There are,It is,They are,A,10,TRUE,1
+q122,Week 13,___ many students in the class.,There is,There are,It is,They are,B,10,TRUE,1
+q123,Week 13,___ any milk in the fridge?,Is there,Are there,Is it,Are they,A,10,TRUE,2
+q124,Week 13,___ two cats under the chair.,There is,There are,It is,They are,B,10,TRUE,1
+q125,Week 13,___ a lot of traffic today.,There is,There are,It is,They are,A,10,TRUE,2
+q126,Week 13,How many apples ___ on the plate?,is there,are there,is it,are they,B,10,TRUE,2
+q127,Week 13,___ no one at home.,There is,There are,It is,They are,A,10,TRUE,2
+q128,Week 13,___ some water in the bottle.,There is,There are,It is,They are,A,10,TRUE,1
+q129,Week 13,___ any problems?,Is there,Are there,Is it,Are they,B,10,TRUE,2
+q130,Week 13,___ a beautiful garden behind the house.,There is,There are,It is,They are,A,10,TRUE,1
+q131,Week 14,___ is your name?,Who,What,Where,When,B,10,TRUE,1
+q132,Week 14,___ do you live?,Who,What,Where,When,C,10,TRUE,1
+q133,Week 14,___ is that man?,Who,What,Where,When,A,10,TRUE,1
+q134,Week 14,___ did you go to bed?,Who,What,Where,When,D,10,TRUE,2
+q135,Week 14,___ book is this?,Who,Whose,Where,When,B,10,TRUE,2
+q136,Week 14,___ are you crying?,Who,What,Why,When,C,10,TRUE,2
+q137,Week 14,___ many brothers do you have?,How,What,Where,Who,A,10,TRUE,2
+q138,Week 14,___ is the nearest hospital?,Who,What,Where,When,C,10,TRUE,1
+q139,Week 14,___ did you buy this bag?,Who,What,Where,When,D,10,TRUE,2
+q140,Week 14,___ is your favourite colour?,Who,What,Where,When,B,10,TRUE,1
+q141,Week 15,This is ___ book.,John,John's,Johns,Johns',B,10,TRUE,2
+q142,Week 15,The ___ toys are everywhere.,children,children's,childrens,childrens',B,10,TRUE,3
+q143,Week 15,___ car is parked outside?,Who,Whose,Who's,Whom,B,10,TRUE,2
+q144,Week 15,The ___ room is very clean.,boys,boy's,boys',boy,C,10,TRUE,3
+q145,Week 15,This is my ___ house.,parent,parents,parent's,parents',D,10,TRUE,3
+q146,Week 15,___ is this bag?,Who,Whose,Who's,Whom,B,10,TRUE,2
+q147,Week 15,The dog wagged ___ tail.,it,it's,its,its',C,10,TRUE,3
+q148,Week 15,These are the ___ bags.,students,student's,students',student,C,10,TRUE,3
+q149,Week 15,I like ___ new bike.,Tom,Tom's,Toms,Toms',B,10,TRUE,2
+q150,Week 15,The ___ wings are colourful.,butterfly,butterfly's,butterflies,butterflies',B,10,TRUE,3
+q151,Week 16,I ___ already finished my homework.,have,has,had,am,A,10,TRUE,3
+q152,Week 16,She ___ never been to Japan.,have,has,had,is,B,10,TRUE,3
+q153,Week 16,___ you ever eaten sushi?,Have,Has,Did,Do,A,10,TRUE,3
+q154,Week 16,They ___ lived here for five years.,have,has,had,are,A,10,TRUE,3
+q155,Week 16,He ___ just left the office.,have,has,had,is,B,10,TRUE,3
+q156,Week 16,We ___ not seen that movie yet.,have,has,had,are,A,10,TRUE,3
+q157,Week 16,___ she finished her project?,Have,Has,Did,Does,B,10,TRUE,3
+q158,Week 16,I ___ known him since 2015.,have,has,had,am,A,10,TRUE,4
+q159,Week 16,The train ___ already arrived.,have,has,had,is,B,10,TRUE,3
+q160,Week 16,___ you ever visited Colombo?,Have,Has,Did,Do,A,10,TRUE,3
+q161,Week 17,You ___ wear a helmet when riding a bike.,must,can,may,might,A,10,TRUE,3
+q162,Week 17,___ I borrow your pen?,Must,Can,Should,Might,B,10,TRUE,2
+q163,Week 17,You ___ smoke here. It’s not allowed.,must,mustn't,can,should,B,10,TRUE,3
+q164,Week 17,She ___ be at home. The lights are on.,must,can,may,might,A,10,TRUE,4
+q165,Week 17,You ___ see a doctor if you feel sick.,should,must,can,may,A,10,TRUE,3
+q166,Week 17,___ you please pass the salt?,Could,Must,Should,Might,A,10,TRUE,3
+q167,Week 17,He ___ be tired after working all day.,must,can,may,might,A,10,TRUE,4
+q168,Week 17,Students ___ bring their ID cards.,must,can,may,might,A,10,TRUE,3
+q169,Week 17,You ___ not touch that wire.,must,mustn't,can,should,B,10,TRUE,3
+q170,Week 17,___ I open the window?,May,Must,Should,Might,A,10,TRUE,3
+q171,Week 18,I like tea ___ I don’t like coffee.,and,but,or,so,B,10,TRUE,2
+q172,Week 18,She was tired ___ she went to bed early.,and,but,or,so,D,10,TRUE,3
+q173,Week 18,Would you like tea ___ coffee?,and,but,or,so,C,10,TRUE,2
+q174,Week 18,He studied hard ___ he passed the exam.,and,but,or,so,D,10,TRUE,3
+q175,Week 18,I wanted to go ___ it was raining.,and,but,or,so,B,10,TRUE,2
+q176,Week 18,She is smart ___ hardworking.,and,but,or,so,A,10,TRUE,2
+q177,Week 18,Call me ___ you need help.,and,but,if,so,C,10,TRUE,3
+q178,Week 18,He is tall ___ his brother is short.,and,but,or,so,B,10,TRUE,2
+q179,Week 18,I will wait ___ you arrive.,and,but,until,so,C,10,TRUE,3
+q180,Week 18,She didn’t study ___ she failed.,and,but,or,so,D,10,TRUE,3
+q181,Week 19,While I ___ TV, the phone rang.,watch,watched,was watching,am watching,C,10,TRUE,4
+q182,Week 19,She ___ in London for three years before moving here.,lived,has lived,had lived,lives,C,10,TRUE,4
+q183,Week 19,If it rains tomorrow, we ___ stay at home.,will,would,can,must,A,10,TRUE,4
+q184,Week 19,By the time we arrived, the movie ___ already started.,has,had,have,was,B,10,TRUE,4
+q185,Week 19,I ___ never seen such a beautiful place before.,have,had,has,was,A,10,TRUE,3
+q186,Week 19,He said that he ___ tired.,is,was,has been,will be,B,10,TRUE,4
+q187,Week 19,She ___ her keys and couldn’t open the door.,lose,lost,has lost,had lost,D,10,TRUE,4
+q188,Week 19,When I was a child, I ___ play outside every day.,use to,used to,am used to,was used,B,10,TRUE,4
+q189,Week 19,This time tomorrow, I ___ on the beach.,will sit,will be sitting,am sitting,sit,B,10,TRUE,5
+q190,Week 19,The letter ___ by the postman yesterday.,delivered,was delivered,is delivered,has delivered,B,10,TRUE,4
+q191,Week 20,Despite the rain, they ___ the match.,continued,continue,continues,continuing,A,10,TRUE,4
+q192,Week 20,Neither John ___ Mary came to the party.,or,nor,and,but,B,10,TRUE,4
+q193,Week 20,The more you practice, the ___ you become.,good,better,best,well,B,10,TRUE,4
+q194,Week 20,She asked me where I ___ .,live,lived,am living,have lived,B,10,TRUE,4
+q195,Week 20,Had I known earlier, I ___ helped you.,will,would,would have,had,C,10,TRUE,5
+q196,Week 20,Not only did he win, ___ he also broke the record.,but,and,or,so,A,10,TRUE,5
+q197,Week 20,It’s high time we ___ a decision.,make,made,makes,making,B,10,TRUE,5
+q198,Week 20,No sooner had she left ___ the phone rang.,when,than,that,then,B,10,TRUE,5
+q199,Week 20,The project ___ by the end of next month.,will complete,will be completed,is completed,has completed,B,10,TRUE,5
+q200,Week 20,Were I you, I ___ accept the offer.,will,would,can,must,B,10,TRUE,5
