@@ -813,7 +813,7 @@ iframe[height="0"] {
   overflow: hidden;
 }
 
-/* Force override Streamlit primary/secondary blue */
+/* Force override Streamlit primary/secondary blue — soft 3D */
 .st-key-cta .stButton > button,
 .st-key-cta button,
 .st-key-again .stButton > button,
@@ -821,24 +821,23 @@ iframe[height="0"] {
 .st-key-start .stButton > button,
 .st-key-start button,
 [data-testid="stForm"] .stFormSubmitButton > button {
-  background: linear-gradient(180deg, #ff6bcb 0%, #ff3cac 40%, #c2185b 100%) !important;
+  background: linear-gradient(180deg, #ff7ad4 0%, #ff3cac 55%, #e91e8c 100%) !important;
   background-color: #ff3cac !important;
   border: none !important;
-  border-bottom: 5px solid #9b0d4a !important;
+  border-bottom: 3px solid #d11a7a !important;   /* softer depth */
   border-radius: 18px !important;
   color: #fff !important;
   font-size: 1.15rem !important;
   font-weight: 700 !important;
-  min-height: 62px !important;
-  letter-spacing: .4px !important;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, .35) !important;
+  min-height: 60px !important;
+  letter-spacing: .3px !important;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .25) !important;
   box-shadow:
-    0 6px 0 #9b0d4a,
-    0 10px 24px rgba(255, 60, 172, .55),
-    inset 0 2px 0 rgba(255, 255, 255, .35) !important;
+    0 3px 0 #d11a7a,                              /* lighter 3D edge */
+    0 8px 20px rgba(255, 60, 172, .4),
+    inset 0 1px 0 rgba(255, 255, 255, .3) !important;
   transform: translateY(0);
   transition: transform .12s, box-shadow .12s, filter .12s !important;
-  animation: cta-pulse 2.4s ease-in-out infinite;
 }
 
 .st-key-cta .stButton > button:hover,
@@ -848,13 +847,13 @@ iframe[height="0"] {
 .st-key-start .stButton > button:hover,
 .st-key-start button:hover,
 [data-testid="stForm"] .stFormSubmitButton > button:hover {
-  background: linear-gradient(180deg, #ff8ad8 0%, #ff4db8 40%, #d81b60 100%) !important;
-  filter: brightness(1.08);
-  transform: translateY(-2px) !important;
+  background: linear-gradient(180deg, #ff95df 0%, #ff4db8 55%, #f062a8 100%) !important;
+  filter: brightness(1.05);
+  transform: translateY(-1px) !important;
   box-shadow:
-    0 8px 0 #9b0d4a,
-    0 14px 28px rgba(255, 60, 172, .65),
-    inset 0 2px 0 rgba(255, 255, 255, .4) !important;
+    0 4px 0 #d11a7a,
+    0 10px 22px rgba(255, 60, 172, .5),
+    inset 0 1px 0 rgba(255, 255, 255, .35) !important;
 }
 
 .st-key-cta .stButton > button:active,
@@ -864,28 +863,12 @@ iframe[height="0"] {
 .st-key-start .stButton > button:active,
 .st-key-start button:active,
 [data-testid="stForm"] .stFormSubmitButton > button:active {
-  transform: translateY(4px) !important;
-  border-bottom-width: 2px !important;
+  transform: translateY(2px) !important;
+  border-bottom-width: 1px !important;
   box-shadow:
-    0 2px 0 #9b0d4a,
-    0 4px 12px rgba(255, 60, 172, .4),
-    inset 0 2px 4px rgba(0, 0, 0, .2) !important;
-  filter: brightness(.95);
-}
-
-@keyframes cta-pulse {
-  0%, 100% {
-    box-shadow:
-      0 6px 0 #9b0d4a,
-      0 10px 24px rgba(255, 60, 172, .55),
-      inset 0 2px 0 rgba(255, 255, 255, .35);
-  }
-  50% {
-    box-shadow:
-      0 6px 0 #9b0d4a,
-      0 10px 32px rgba(255, 60, 172, .8),
-      inset 0 2px 0 rgba(255, 255, 255, .35);
-  }
+    0 1px 0 #d11a7a,
+    0 3px 10px rgba(255, 60, 172, .3),
+    inset 0 1px 3px rgba(0, 0, 0, .15) !important;
 }
 
 .st-key-nav .stButton > button { font-size: .82rem; }
