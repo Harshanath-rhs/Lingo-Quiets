@@ -793,7 +793,7 @@ html, body, .stApp, .stApp * { font-family: 'Fredoka', system-ui, sans-serif; }
   100% { transform: translateY(70px) scale(1.1); opacity: 0; }
 }
 
-/* ---- CTA & special buttons ---- */
+/* ---- CTA & special buttons (3D game style) ---- */
 .st-key-timeout {
   position: absolute !important;
   left: -9999px;
@@ -812,23 +812,82 @@ iframe[height="0"] {
   height: 0;
   overflow: hidden;
 }
-.st-key-cta .stButton > button {
-  background: linear-gradient(90deg, #ff3cac, #7b2ff7) !important;
-  border: none !important;
-  animation: glow-f 2.2s infinite;
-  --c: #ff3cac;
-  box-shadow: 0 8px 28px rgba(255, 60, 172, .5) !important;
-  font-size: 1.12rem !important;
-  min-height: 60px !important;
-}
+
+/* Force override Streamlit primary/secondary blue */
+.st-key-cta .stButton > button,
+.st-key-cta button,
 .st-key-again .stButton > button,
-.st-key-start .stButton > button {
-  background: linear-gradient(90deg, #ff3cac, #7b2ff7) !important;
+.st-key-again button,
+.st-key-start .stButton > button,
+.st-key-start button,
+[data-testid="stForm"] .stFormSubmitButton > button {
+  background: linear-gradient(180deg, #ff6bcb 0%, #ff3cac 40%, #c2185b 100%) !important;
+  background-color: #ff3cac !important;
   border: none !important;
-  box-shadow: 0 8px 26px rgba(255, 60, 172, .48) !important;
-  font-size: 1.1rem !important;
-  min-height: 58px !important;
+  border-bottom: 5px solid #9b0d4a !important;
+  border-radius: 18px !important;
+  color: #fff !important;
+  font-size: 1.15rem !important;
+  font-weight: 700 !important;
+  min-height: 62px !important;
+  letter-spacing: .4px !important;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, .35) !important;
+  box-shadow:
+    0 6px 0 #9b0d4a,
+    0 10px 24px rgba(255, 60, 172, .55),
+    inset 0 2px 0 rgba(255, 255, 255, .35) !important;
+  transform: translateY(0);
+  transition: transform .12s, box-shadow .12s, filter .12s !important;
+  animation: cta-pulse 2.4s ease-in-out infinite;
 }
+
+.st-key-cta .stButton > button:hover,
+.st-key-cta button:hover,
+.st-key-again .stButton > button:hover,
+.st-key-again button:hover,
+.st-key-start .stButton > button:hover,
+.st-key-start button:hover,
+[data-testid="stForm"] .stFormSubmitButton > button:hover {
+  background: linear-gradient(180deg, #ff8ad8 0%, #ff4db8 40%, #d81b60 100%) !important;
+  filter: brightness(1.08);
+  transform: translateY(-2px) !important;
+  box-shadow:
+    0 8px 0 #9b0d4a,
+    0 14px 28px rgba(255, 60, 172, .65),
+    inset 0 2px 0 rgba(255, 255, 255, .4) !important;
+}
+
+.st-key-cta .stButton > button:active,
+.st-key-cta button:active,
+.st-key-again .stButton > button:active,
+.st-key-again button:active,
+.st-key-start .stButton > button:active,
+.st-key-start button:active,
+[data-testid="stForm"] .stFormSubmitButton > button:active {
+  transform: translateY(4px) !important;
+  border-bottom-width: 2px !important;
+  box-shadow:
+    0 2px 0 #9b0d4a,
+    0 4px 12px rgba(255, 60, 172, .4),
+    inset 0 2px 4px rgba(0, 0, 0, .2) !important;
+  filter: brightness(.95);
+}
+
+@keyframes cta-pulse {
+  0%, 100% {
+    box-shadow:
+      0 6px 0 #9b0d4a,
+      0 10px 24px rgba(255, 60, 172, .55),
+      inset 0 2px 0 rgba(255, 255, 255, .35);
+  }
+  50% {
+    box-shadow:
+      0 6px 0 #9b0d4a,
+      0 10px 32px rgba(255, 60, 172, .8),
+      inset 0 2px 0 rgba(255, 255, 255, .35);
+  }
+}
+
 .st-key-nav .stButton > button { font-size: .82rem; }
 
 /* ---- Reduced motion ---- */
