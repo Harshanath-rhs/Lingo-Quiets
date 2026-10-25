@@ -824,7 +824,7 @@ iframe[height="0"] {
   background: linear-gradient(180deg, #ff7ad4 0%, #ff3cac 55%, #e91e8c 100%) !important;
   background-color: #ff3cac !important;
   border: none !important;
-  border-bottom: 2px solid #d11a7a !important;   /* softer depth */
+  border-bottom: 1px solid #d11a7a !important;   /* softer depth */
   border-radius: 18px !important;
   color: #fff !important;
   font-size: 1.15rem !important;
@@ -833,7 +833,7 @@ iframe[height="0"] {
   letter-spacing: .3px !important;
   text-shadow: 0 1px 3px rgba(0, 0, 0, .25) !important;
   box-shadow:
-    0 3px 0 #d11a7a,                              /* lighter 3D edge */
+    0 2px 0 #d11a7a,                              /* lighter 3D edge */
     0 8px 20px rgba(255, 60, 172, .4),
     inset 0 1px 0 rgba(255, 255, 255, .3) !important;
   transform: translateY(0);
