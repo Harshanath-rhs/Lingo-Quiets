@@ -1380,3 +1380,109 @@ div[data-testid="stHorizontalBlock"]:has(.st-key-cta) {
 @media (min-width: 520px) {
   .block-container { padding-top: 1.8rem !important; }
 }
+
+/* ---- Power-ups + nav colors (keep at END) ---- */
+.st-key-pu {
+  flex-direction: row !important;
+  gap: .5rem !important;
+  margin-bottom: .35rem !important;
+}
+.st-key-pu > div { flex: 1 !important; min-width: 0 !important; }
+
+.st-key-pu_fifty .stButton > button,
+.st-key-pu_fifty button {
+  background: linear-gradient(180deg, #fde68a 0%, #f59e0b 100%) !important;
+  background-color: #f59e0b !important;
+  border: none !important;
+  border-bottom: 2px solid #b45309 !important;
+  color: #1a1030 !important;
+  font-weight: 700 !important;
+  min-height: 46px !important;
+  font-size: .82rem !important;
+  box-shadow: 0 2px 0 #b45309, 0 4px 12px rgba(245, 158, 11, .4) !important;
+}
+.st-key-pu_time .stButton > button,
+.st-key-pu_time button {
+  background: linear-gradient(180deg, #7ee8fa 0%, #0284c7 100%) !important;
+  background-color: #0284c7 !important;
+  border: none !important;
+  border-bottom: 2px solid #075985 !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  min-height: 46px !important;
+  font-size: .82rem !important;
+  box-shadow: 0 2px 0 #075985, 0 4px 12px rgba(2, 132, 199, .4) !important;
+}
+.st-key-pu_skip .stButton > button,
+.st-key-pu_skip button {
+  background: linear-gradient(180deg, #c4b5fd 0%, #7c3aed 100%) !important;
+  background-color: #7c3aed !important;
+  border: none !important;
+  border-bottom: 2px solid #5b21b6 !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  min-height: 46px !important;
+  font-size: .82rem !important;
+  box-shadow: 0 2px 0 #5b21b6, 0 4px 12px rgba(124, 58, 237, .4) !important;
+}
+.st-key-pu_fifty .stButton > button:disabled,
+.st-key-pu_time .stButton > button:disabled,
+.st-key-pu_skip .stButton > button:disabled {
+  opacity: .4 !important;
+  filter: grayscale(.3) !important;
+}
+
+.st-key-nav_home .stButton > button, .st-key-nav_home button {
+  background: linear-gradient(180deg, #fbbf24, #f59e0b) !important;
+  background-color: #f59e0b !important;
+  border: none !important;
+  color: #1a1030 !important;
+  font-weight: 700 !important;
+}
+.st-key-nav_quests .stButton > button, .st-key-nav_quests button {
+  background: linear-gradient(180deg, #ff7ad4, #ff3cac) !important;
+  background-color: #ff3cac !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+}
+.st-key-nav_story .stButton > button, .st-key-nav_story button {
+  background: linear-gradient(180deg, #7ee8fa, #0284c7) !important;
+  background-color: #0284c7 !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+}
+.st-key-nav_leagues .stButton > button, .st-key-nav_leagues button {
+  background: linear-gradient(180deg, #c4b5fd, #7c3aed) !important;
+  background-color: #7c3aed !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+}
+.st-key-nav_profile .stButton > button, .st-key-nav_profile button {
+  background: linear-gradient(180deg, #86efac, #16a34a) !important;
+  background-color: #16a34a !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+}
+.st-key-nav_teacher .stButton > button, .st-key-nav_teacher button {
+  background: linear-gradient(180deg, #5eead4, #0f766e) !important;
+  background-color: #0f766e !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+}
+.st-key-nav_sound .stButton > button, .st-key-nav_sound button {
+  background: rgba(255, 255, 255, .18) !important;
+  border: 1px solid rgba(255, 255, 255, .35) !important;
+  color: #fff !important;
+}
+.st-key-nav_exit .stButton > button, .st-key-nav_exit button {
+  background: linear-gradient(180deg, #fca5a5, #ef4444) !important;
+  background-color: #ef4444 !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+}
