@@ -1708,7 +1708,7 @@ def page_home():
         <div class="stats">
           <div class="stat"><b>{xp:,}</b><span>XP</span></div>
           <div class="stat"><b>#{pos + 1 if pos is not None else "-"}</b><span>Rank</span></div>
-          <div class="stat"><b>{eggs}</b><span>Eggs 🥚</span></div>
+          <div class="stat"><b>{eggs}</b><span>Owl Eggs 🥚</span></div>
           <div class="stat"><b>{arrows}</b><span>Arrows 🏹</span></div>
         </div>
         <div class="bar"><i style="width:{pct}%"></i></div>
