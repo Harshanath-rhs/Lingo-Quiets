@@ -1486,3 +1486,342 @@ div[data-testid="stHorizontalBlock"]:has(.st-key-cta) {
   color: #fff !important;
   font-weight: 700 !important;
 }
+/* ---- Tiered achievements + Owl Eggs ---- */
+.egg-count {
+  font-size: 1.5rem;
+  margin-bottom: .3rem;
+  color: var(--gold);
+  text-shadow: 0 0 14px rgba(255, 210, 63, .5);
+}
+.egg-count b { font-size: 1.9rem; }
+.ach-card { padding: .85rem .95rem; margin-bottom: .55rem; }
+.ach-card.ready {
+  border-color: var(--gold);
+  box-shadow: 0 0 22px rgba(255, 210, 63, .45), var(--shadow);
+  animation: card-in .45s cubic-bezier(.22, 1, .36, 1), burn-btn 1.2s ease-in-out infinite alternate;
+}
+.ach-top { display: flex; align-items: center; gap: .7rem; }
+.ach-ico { font-size: 1.9rem; }
+.ach-info { flex: 1; min-width: 0; text-align: left; }
+.ach-info b { display: block; font-size: 1.02rem; }
+.ach-info small { font-size: .76rem; opacity: .85; line-height: 1.25; display: block; }
+.ach-stars { font-size: 1.15rem; letter-spacing: 1px; white-space: nowrap; color: var(--gold); }
+.ach-prog { font-size: .78rem; opacity: .9; text-align: right; }
+
+/* Claim buttons (gold) */
+[class*="st-key-claim_"] .stButton > button,
+[class*="st-key-claim_"] button {
+  background: linear-gradient(180deg, #fde68a 0%, #f59e0b 100%) !important;
+  background-color: #f59e0b !important;
+  border: none !important;
+  border-bottom: 2px solid #b45309 !important;
+  color: #1a1030 !important;
+  font-weight: 700 !important;
+  min-height: 50px !important;
+  margin-bottom: .6rem;
+  box-shadow: 0 2px 0 #b45309, 0 6px 16px rgba(245, 158, 11, .45) !important;
+}
+
+/* ======================= Battle, shop, seasons ======================= */
+.chip-prestige { background: rgba(255, 210, 63, .25) !important; border-color: rgba(255, 210, 63, .55) !important; }
+.chip-trophy { background: rgba(255, 122, 60, .28) !important; border-color: rgba(255, 122, 60, .55) !important; }
+.season-chip {
+  padding: .25rem .7rem; border-radius: 99px; font-size: .8rem; font-weight: 600;
+  background: rgba(123, 47, 247, .3); border: 1.5px solid #a78bfa;
+}
+.notice.revenge { border-color: #ff7a3c; box-shadow: 0 0 20px rgba(255, 122, 60, .45), var(--shadow); }
+.art.anim { width: 170px; height: 170px; animation: none; }
+
+/* Avatar frames (bought with Owl Eggs) */
+.avatar.frame-royal { outline: 3px double #ffd23f; outline-offset: 5px; }
+.avatar.frame-emerald { outline: 3px solid #2ee59d; outline-offset: 5px; animation: frame-pulse 1.8s ease-in-out infinite; }
+.avatar.frame-frost { outline: 3px solid #5ef0ff; outline-offset: 5px; animation: frame-frost 2.2s ease-in-out infinite; }
+.avatar.frame-inferno { outline: 3px solid #ff7a3c; outline-offset: 5px; animation: frame-fire .8s ease-in-out infinite alternate; }
+.avatar.frame-rainbow { outline: 3px solid #ff3cac; outline-offset: 5px; animation: frame-rainbow 3s linear infinite; }
+@keyframes frame-pulse { 0%, 100% { outline-offset: 4px; } 50% { outline-offset: 8px; } }
+@keyframes frame-frost { 0%, 100% { outline-color: #5ef0ff; outline-offset: 5px; } 50% { outline-color: #fff; outline-offset: 8px; } }
+@keyframes frame-fire { 0% { outline-color: #ff7a3c; outline-offset: 4px; } 100% { outline-color: #ffd23f; outline-offset: 7px; } }
+@keyframes frame-rainbow {
+  0% { outline-color: #ff3cac; } 20% { outline-color: #ffd23f; } 40% { outline-color: #2ee59d; }
+  60% { outline-color: #00f5d4; } 80% { outline-color: #7b2ff7; } 100% { outline-color: #ff3cac; }
+}
+
+/* Attack walls strip */
+.walls { display: flex; justify-content: center; flex-wrap: wrap; gap: .3rem; margin: .5rem 0 .2rem; }
+.wall { width: 34px; height: 34px; object-fit: contain; }
+.wall.emoji { font-size: 1.6rem; line-height: 34px; display: inline-block; text-align: center; }
+.wall-need { font-size: .8rem; opacity: .9; text-align: center; margin-bottom: .2rem; }
+
+/* Arena target cards */
+.glass.target { display: flex; align-items: center; gap: .8rem; padding: .8rem .9rem; margin-bottom: .35rem; }
+.target .avatar { margin: 0; width: 58px; height: 58px; flex: 0 0 auto; }
+.tg-mid { flex: 1; min-width: 0; text-align: left; }
+.tg-mid b { display: block; font-size: 1.05rem; overflow-wrap: anywhere; }
+.tg-mid small { font-size: .74rem; opacity: .9; }
+
+/* Battle log */
+.glass.log-row { padding: .7rem .9rem; margin-bottom: .45rem; text-align: left; font-size: .92rem; line-height: 1.4; }
+.log-row small { display: block; opacity: .7; font-size: .72rem; margin-top: .15rem; }
+.log-row.ok { border-color: rgba(46, 229, 157, .55); }
+.log-row.no { border-color: rgba(255, 93, 115, .55); }
+
+/* Egg shop */
+.glass.shop-item { display: flex; align-items: center; gap: .8rem; padding: .75rem .9rem; margin-bottom: .35rem; }
+.shop-ico { font-size: 1.8rem; }
+.shop-info { flex: 1; min-width: 0; text-align: left; }
+.shop-info b { display: block; }
+.shop-info small { font-size: .76rem; opacity: .85; }
+.shop-cost { font-weight: 700; color: var(--gold); white-space: nowrap; }
+
+/* Hall of fame */
+.hof-row { display: flex; align-items: baseline; gap: .5rem; padding: .35rem 0; font-size: .95rem; }
+.hof-row span { margin-left: auto; color: var(--gold); font-weight: 700; }
+.hof-row small { opacity: .75; }
+
+/* Buttons */
+[class*="st-key-atk_"] button, .st-key-rev_go button, [class*="st-key-rev_"] button {
+  background: linear-gradient(180deg, #ff9a9a 0%, #ef4444 55%, #b91c1c 100%) !important;
+  background-color: #ef4444 !important;
+  border: none !important; border-bottom: 2px solid #7f1d1d !important;
+  color: #fff !important; font-weight: 700 !important; min-height: 50px !important; margin-bottom: .7rem;
+  box-shadow: 0 2px 0 #7f1d1d, 0 6px 16px rgba(239, 68, 68, .45), inset 0 1px 0 rgba(255, 255, 255, .3) !important;
+}
+[class*="st-key-atk_"] button:disabled { opacity: .55; filter: grayscale(.5); }
+[class*="st-key-buy_"] button {
+  background: linear-gradient(180deg, #fde68a 0%, #f59e0b 100%) !important;
+  background-color: #f59e0b !important;
+  border: none !important; border-bottom: 2px solid #b45309 !important;
+  color: #1a1030 !important; font-weight: 700 !important; min-height: 46px !important; margin-bottom: .7rem;
+  box-shadow: 0 2px 0 #b45309, 0 6px 16px rgba(245, 158, 11, .4) !important;
+}
+[class*="st-key-buy_"] button:disabled { opacity: .45; filter: grayscale(.3); }
+.st-key-bat_back button, .st-key-atk_done button, .st-key-ns_close button {
+  background: linear-gradient(180deg, #a78bfa 0%, #7c3aed 100%) !important;
+  background-color: #7c3aed !important;
+  border: none !important; border-bottom: 2px solid #5b21b6 !important;
+  color: #fff !important; font-weight: 600 !important;
+  box-shadow: 0 2px 0 #5b21b6, 0 6px 14px rgba(124, 58, 237, .35) !important;
+}
+.st-key-nav_battle button {
+  background: linear-gradient(180deg, #ff9a9a, #ef4444) !important;
+  background-color: #ef4444 !important; border: none !important; color: #fff !important; font-weight: 700 !important;
+}
+
+/* ======================= Clash of Nests v4 ======================= */
+
+/* ---- Bottom nav: one row that scrolls sideways (11 buttons) ---- */
+.st-key-nav {
+  overflow-x: auto !important;
+  flex-wrap: nowrap !important;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.st-key-nav::-webkit-scrollbar { display: none; }
+.st-key-nav > div { flex: 1 0 52px !important; min-width: 52px !important; scroll-snap-align: start; }
+.st-key-nav_nest button {
+  background: linear-gradient(180deg, #fcd34d, #b45309) !important;
+  background-color: #b45309 !important; border: none !important; color: #fff !important; font-weight: 700 !important;
+}
+.st-key-nav_shop button {
+  background: linear-gradient(180deg, #fde68a, #f59e0b) !important;
+  background-color: #f59e0b !important; border: none !important; color: #1a1030 !important; font-weight: 700 !important;
+}
+
+/* ---- Name glows (bought with Owl Eggs) ---- */
+.nm { display: inline-block; font-weight: 700; }
+.nm.glow-cyan { color: #b9fff4; text-shadow: 0 0 6px #00f5d4, 0 0 16px #00f5d4; animation: glow-cyan 2s ease-in-out infinite; }
+.nm.glow-inferno { color: #ffd2b8; text-shadow: 0 0 6px #ff3c00, 0 0 16px #ff7a3c; animation: glow-fire .8s ease-in-out infinite alternate; }
+.nm.glow-gold {
+  background: linear-gradient(90deg, #ffd23f, #fff6c8, #ffd23f, #ff9d2e, #ffd23f);
+  background-size: 250% auto; -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  filter: drop-shadow(0 0 6px rgba(255, 210, 63, .8)); animation: shine-text 2.5s linear infinite;
+}
+.nm.glow-gold::after { content: "✨"; -webkit-text-fill-color: initial; margin-left: .15rem; font-size: .8em; animation: twinkle 1.4s infinite; }
+.nm.glow-aurora {
+  background: linear-gradient(90deg, #ff3cac, #ffd23f, #2ee59d, #00f5d4, #7b2ff7, #ff3cac);
+  background-size: 300% auto; -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  filter: drop-shadow(0 0 7px rgba(199, 125, 255, .7)); animation: shine-text 4s linear infinite;
+}
+@keyframes glow-cyan { 0%, 100% { text-shadow: 0 0 5px #00f5d4, 0 0 12px #00f5d4; } 50% { text-shadow: 0 0 10px #00f5d4, 0 0 26px #5ef0ff; } }
+@keyframes glow-fire { 0% { text-shadow: 0 0 6px #ff3c00, 0 0 12px #ff7a3c; } 100% { text-shadow: 0 0 10px #ff7a3c, 0 0 24px #ffb347; } }
+.title-tag {
+  display: inline-block; margin-top: .15rem; padding: .05rem .55rem; font-size: .68rem; font-weight: 600;
+  border-radius: 99px; background: rgba(255, 210, 63, .22); border: 1px solid rgba(255, 210, 63, .6); color: #ffe9a3;
+}
+.nest-badge {
+  display: inline-block; margin-left: .35rem; padding: .02rem .45rem; font-size: .66rem; font-weight: 700;
+  border-radius: 99px; background: rgba(255, 170, 60, .25); border: 1px solid rgba(255, 170, 60, .65); vertical-align: middle;
+}
+.chip-owl { background: rgba(123, 47, 247, .3) !important; border-color: rgba(167, 139, 250, .7) !important; }
+
+/* ---- Nest scene (home, nest hub, profile, shop preview, visit base) ---- */
+.scene {
+  position: relative; overflow: hidden; border-radius: 22px; padding: .85rem .8rem .7rem;
+  background: linear-gradient(145deg, rgba(255,255,255,.1), rgba(255,255,255,.03));
+  border: 1px solid var(--border); background-size: cover; background-position: center; text-align: left;
+}
+.scene > * { position: relative; z-index: 1; }
+.scene-top { display: flex; align-items: center; gap: .75rem; }
+.scene-mid { flex: 1; min-width: 0; }
+.scene-name { font-size: 1.3rem; line-height: 1.2; overflow-wrap: anywhere; }
+.scene .tier { margin: .1rem 0 .25rem; font-size: .9rem; color: var(--c, var(--gold)) !important; }
+.scene-nest { text-align: center; margin-top: .55rem; }
+.scene-nest small { display: block; font-size: .8rem; opacity: .9; }
+.nest-art { width: 138px !important; height: 138px !important; margin: 0 auto .1rem !important; }
+.nest-art.emoji { font-size: 5rem !important; line-height: 138px !important; }
+.bld-row { display: flex; gap: .4rem; margin-top: .45rem; }
+.bld {
+  flex: 1; min-width: 0; text-align: center; padding: .4rem .2rem; border-radius: 14px;
+  background: rgba(0, 0, 0, .22); border: 1px solid rgba(255, 255, 255, .18);
+}
+.bld small { display: block; font-size: .66rem; line-height: 1.2; opacity: .92; }
+.bld.off { opacity: .55; filter: grayscale(.6); }
+.bld-art { width: 52px !important; height: 52px !important; animation: none !important; margin: 0 auto .1rem !important; }
+.bld-art.emoji { font-size: 2.1rem !important; line-height: 52px !important; height: 52px !important; }
+.nest-hub { padding: .7rem !important; }
+.scene .avatar.pc { margin: 0; flex: 0 0 auto; }
+.st-key-homecard .scene { margin-bottom: .3rem; }
+.profile-card .scene { margin-bottom: .6rem; }
+
+/* ---- Profile banners (CSS-only; a PNG in assets/images/banners/ overrides them) ---- */
+.scene.banner-midnight { background-image: linear-gradient(160deg, #0b0630 0%, #2a1b6b 60%, #5b2a9a 100%); }
+.scene.banner-midnight::after { content: "🏰"; position: absolute; right: 8px; bottom: -10px; font-size: 5.2rem; opacity: .16; }
+.scene.banner-library { background-image: linear-gradient(160deg, #2b1608 0%, #6b3f16 60%, #a8742b 100%); }
+.scene.banner-library::after { content: "📚"; position: absolute; right: 8px; bottom: -8px; font-size: 5rem; opacity: .18; }
+.scene.banner-dragon { background-image: linear-gradient(160deg, #1a0300 0%, #6b0f00 55%, #ff5a00 130%); animation: dragon-glow 2.4s ease-in-out infinite alternate; }
+.scene.banner-dragon::after { content: "🐉"; position: absolute; right: 8px; bottom: -8px; font-size: 5rem; opacity: .22; }
+.scene.banner-cyber {
+  background-image:
+    linear-gradient(rgba(0, 245, 212, .16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 245, 212, .16) 1px, transparent 1px),
+    linear-gradient(160deg, #02040f 0%, #08204a 100%);
+  background-size: 22px 22px, 22px 22px, 100% 100%;
+  animation: cyber-scan 6s linear infinite;
+}
+@keyframes dragon-glow { 0% { box-shadow: inset 0 -20px 40px rgba(255, 80, 0, .25); } 100% { box-shadow: inset 0 -30px 60px rgba(255, 120, 0, .5); } }
+@keyframes cyber-scan { to { background-position: 0 22px, 22px 0, 0 0; } }
+
+/* ---- Battle stage (face to face) ---- */
+.stage {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: .3rem; margin: .5rem 0 .3rem;
+  padding: .55rem .4rem; border-radius: 18px; background: rgba(0, 0, 0, .2); border: 1px solid var(--border);
+}
+.stage-side { flex: 1; min-width: 0; text-align: center; }
+.stage-side b { display: block; font-size: .78rem; margin-top: .1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stage-av .avatar { margin: 0 auto .2rem; width: 44px; height: 44px; font-size: 1.1rem; }
+.stage-art { width: 76px !important; height: 76px !important; margin: .15rem auto !important; animation: none !important; }
+.stage-art.emoji { font-size: 3rem !important; line-height: 76px !important; height: 76px !important; }
+.stage-vs { font-size: 1.7rem; padding-bottom: 1.4rem; animation: clash-pulse 1s ease-in-out infinite; }
+@keyframes clash-pulse { 0%, 100% { transform: scale(1) rotate(-6deg); } 50% { transform: scale(1.25) rotate(6deg); } }
+@keyframes wall-shake { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(-3px, 1px) rotate(-2deg); } 75% { transform: translate(3px, -1px) rotate(2deg); } }
+.stage.st-cracked .def .fort { filter: sepia(.5) saturate(1.2); animation: wall-shake .45s 2 !important; }
+.stage.st-ruined .def .fort { filter: brightness(.8) saturate(1.3) drop-shadow(0 0 10px rgba(255, 90, 0, .8)); animation: wall-shake .4s infinite !important; }
+.stage.st-wiped .def .fort { filter: grayscale(.4) drop-shadow(0 0 14px #ffd23f); animation: pop .6s !important; }
+.stage.st-wiped { border-color: var(--gold); box-shadow: 0 0 22px rgba(255, 210, 63, .5); }
+.stage.st-ruined { border-color: #ff7a3c; }
+.stage-hp { height: 10px; border-radius: 99px; background: rgba(0, 0, 0, .35); overflow: hidden; border: 1px solid rgba(255, 255, 255, .15); }
+.stage-hp i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #ff5d73, #ffd23f, #2ee59d); transition: width .6s cubic-bezier(.22, 1, .36, 1); }
+.stage-label { margin-top: .3rem; font-weight: 700; font-size: .95rem; text-align: center; }
+.duel-banner { padding: .5rem .8rem; margin-bottom: .4rem; border-radius: 14px; font-size: .88rem; background: rgba(0, 245, 212, .14); border: 1px solid rgba(0, 245, 212, .5); }
+.notice.duel-alert { border-color: var(--cyan); box-shadow: 0 0 18px rgba(0, 245, 212, .4), var(--shadow); }
+
+/* ---- Owl XP / battle league card ---- */
+.owl-card { display: flex; align-items: center; gap: .8rem; text-align: left; margin: .4rem 0 .6rem; padding: .6rem .8rem; border-radius: 18px; background: rgba(0, 0, 0, .2); border: 1px solid var(--border); }
+.owl-mid { flex: 1; min-width: 0; }
+.owl-mid b { display: block; font-size: 1.1rem; }
+.owl-mid small { font-size: .78rem; opacity: .9; }
+.bl-ico { width: 56px !important; height: 56px !important; animation: none !important; margin: 0 !important; flex: 0 0 auto; }
+.bl-ico.emoji { font-size: 2.4rem !important; line-height: 56px !important; height: 56px !important; }
+.found { padding: .8rem !important; }
+.found-tag { font-size: .8rem; font-weight: 700; color: var(--cyan); margin-bottom: .4rem; }
+
+/* ---- Nest Hub buildings ---- */
+.bld-card { padding: .85rem .95rem !important; margin-bottom: .4rem !important; text-align: left; }
+.bld-head { display: flex; align-items: center; gap: .7rem; }
+.bld-head .bld-art { flex: 0 0 auto; }
+.bld-title b { display: block; font-size: 1.05rem; }
+.bld-title small { font-size: .78rem; opacity: .9; }
+.bld-desc { margin: .4rem 0 .3rem; font-size: .85rem; opacity: .92; }
+.req-title { font-size: .78rem; font-weight: 700; opacity: .85; margin-top: .2rem; }
+.req { font-size: .82rem; padding: .08rem 0; }
+.req.ok { color: #7dffc4; }
+.req.no { opacity: .85; }
+.visit-card { padding: .8rem 1rem !important; margin-bottom: .4rem !important; }
+.visit-card h3 { margin-bottom: .1rem !important; }
+
+/* ---- Pop-up (Visit Base) ---- */
+div[role="dialog"] {
+  background: linear-gradient(145deg, #1a0b4a 0%, #3a0ca3 60%, #5a1d9a 100%) !important;
+  color: #fff !important; border: 1px solid var(--border) !important; border-radius: 26px !important;
+}
+div[role="dialog"] p, div[role="dialog"] h1, div[role="dialog"] h2, div[role="dialog"] h3,
+div[role="dialog"] small, div[role="dialog"] span, div[role="dialog"] b { color: inherit; }
+div[role="dialog"] .scene .nm.glow-gold, div[role="dialog"] .scene .nm.glow-aurora { color: transparent; }
+
+/* ---- Select boxes: dark text on a white box (readable in any browser theme) ---- */
+[data-baseweb="select"] > div { background: #fff !important; border-radius: 14px !important; min-height: 48px; }
+[data-baseweb="select"] * { color: #1a1030 !important; -webkit-text-fill-color: #1a1030 !important; }
+[data-baseweb="popover"] li, [data-baseweb="popover"] [role="option"], ul[role="listbox"] li {
+  color: #1a1030 !important; -webkit-text-fill-color: #1a1030 !important;
+}
+
+/* ---- Buttons ---- */
+.st-key-atk_find button, .st-key-atk_go button {
+  background: linear-gradient(180deg, #ff9a9a 0%, #ef4444 55%, #b91c1c 100%) !important;
+  background-color: #ef4444 !important; border: none !important; border-bottom: 2px solid #7f1d1d !important;
+  color: #fff !important; font-weight: 700 !important; min-height: 54px !important;
+  box-shadow: 0 2px 0 #7f1d1d, 0 6px 16px rgba(239, 68, 68, .45), inset 0 1px 0 rgba(255, 255, 255, .3) !important;
+}
+.st-key-atk_find button { animation: burn-btn 1s ease-in-out infinite alternate; }
+.st-key-atk_find button:disabled { animation: none; opacity: .5; }
+.st-key-atk_next button, .st-key-atk_leave button, .st-key-nest_back button, .st-key-shop_back button,
+.st-key-shop_clear button, .st-key-ns_close button {
+  background: linear-gradient(180deg, #a78bfa 0%, #7c3aed 100%) !important; background-color: #7c3aed !important;
+  border: none !important; border-bottom: 2px solid #5b21b6 !important; color: #fff !important; font-weight: 600 !important;
+  box-shadow: 0 2px 0 #5b21b6, 0 6px 14px rgba(124, 58, 237, .35) !important;
+}
+.st-key-duel_go button, [class*="st-key-duel_acc_"] button, .st-key-duel_go_home button, .st-key-hatch_go_home button,
+.st-key-visit_go button {
+  background: linear-gradient(180deg, #5eead4 0%, #14b8a6 55%, #0f766e 100%) !important; background-color: #14b8a6 !important;
+  border: none !important; border-bottom: 2px solid #115e59 !important; color: #fff !important; font-weight: 700 !important;
+  min-height: 52px !important; margin-bottom: .6rem;
+  box-shadow: 0 2px 0 #115e59, 0 6px 16px rgba(20, 184, 166, .4), inset 0 1px 0 rgba(255, 255, 255, .3) !important;
+}
+[class*="st-key-buy_try_"] button {
+  min-height: 44px !important; font-size: .9rem !important;
+  background: rgba(255, 255, 255, .14) !important; border: 1.5px solid rgba(255, 255, 255, .4) !important;
+  color: #fff !important; font-weight: 600 !important; box-shadow: none !important;
+}
+[class*="st-key-buy_eq_"] button, [class*="st-key-buy_new_"] button, [class*="st-key-buy_off_"] button { min-height: 44px !important; font-size: .9rem !important; }
+
+@media (max-width: 380px) {
+  .scene-name { font-size: 1.1rem; }
+  .nest-art { width: 112px !important; height: 112px !important; }
+  .stage-art { width: 60px !important; height: 60px !important; }
+}
+
+/* ---- v4 polish ---- */
+/* newer Streamlit makes buttons content-width by default: keep them full width */
+.stButton, div[data-testid="stButton"], div[data-testid="stFormSubmitButton"] { width: 100% !important; }
+.stButton > button, div[data-testid="stButton"] > button { width: 100% !important; }
+.scene .lg-ico.pc { width: 60px !important; height: 60px !important; }
+.scene .chips { gap: .2rem; }
+.scene .chip { font-size: .62rem; padding: .08rem .42rem; }
+.nest-art { width: 118px !important; height: 118px !important; }
+.nest-art.emoji { font-size: 4.2rem !important; line-height: 118px !important; }
+.glass.hero.compact { padding: .8rem .9rem; }
+.glass.hero.compact .owl-card { margin-top: 0; }
+/* found-opponent card must be a normal block (older .target rule made it a flex row) */
+.glass.target.found { display: block !important; }
+.glass.target.found .scene .avatar.pc { width: 72px; height: 72px; margin: 0; }
+.glass.target.found .scene-top { align-items: center; }
+/* newer Streamlit sizes the wrapper of a button to its content: make it span the card */
+[data-testid="stElementContainer"]:has(> .stButton),
+[data-testid="stElementContainer"]:has(> [data-testid="stButton"]),
+[data-testid="stElementContainer"]:has(> [data-testid="stFormSubmitButton"]) { width: 100% !important; }
+/* slim section headers (e.g. shop "Boosts") */
+.glass:has(> h3:only-child) { padding: 10px 16px !important; min-height: 0 !important; }
+.glass > h3:only-child { margin: 0 !important; font-size: 1.15rem !important; }
