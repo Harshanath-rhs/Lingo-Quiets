@@ -1,4 +1,4 @@
-"""LingoQuest v3 - gamified English learning (Streamlit + Google Sheets).
+"""Clash of Nests v4 (formerly LingoQuest) - gamified English learning (Streamlit + Google Sheets).
 Mobile-first · kid-friendly · high polish UI
 Features: Quests, Mistake Review, Power-ups, Story Forge, Leagues, Class Battle,
 Profile, Achievements, Teacher Tools.
@@ -9,13 +9,14 @@ import hashlib
 import html
 import io
 import json
+import math
 import logging
 import random
 import re
 import threading
 import time
 from collections import deque
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import gspread
@@ -27,20 +28,32 @@ from google.oauth2.service_account import Credentials
 from gspread.utils import rowcol_to_a1
 from PIL import Image, ImageOps
 
+def _page_icon():
+    """assets/images/game_icon.ico, with a safe emoji fallback if the file is missing or unreadable."""
+    p = Path(__file__).parent / "assets" / "images" / "game_icon.ico"
+    try:
+        if p.exists():
+            return Image.open(p)
+    except Exception:
+        pass
+    return "🦉"
+
+
 st.set_page_config(
-    page_title="LingoQuest",
-    page_icon="🎮",
+    page_title="Clash of Nests",
+    page_icon=_page_icon(),
     layout="centered",
     initial_sidebar_state="collapsed",
 )
 
-log = logging.getLogger("lingoquest")
+log = logging.getLogger("clashofnests")
 
 # ----------------------------------------------------------------- config
 BASE = Path(__file__).parent
 PROFILE_DIR = BASE / "profile_picture"
 LEAGUE_DIR = BASE / "assets" / "leagues"
 IMG_DIR = BASE / "assets" / "images"
+ANIM_DIR = IMG_DIR / "anim"          # animated GIF/WebP files
 TZ = timezone(timedelta(hours=5, minutes=30))  # Sri Lanka
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
@@ -49,9 +62,11 @@ QUEST_SIZE, TIME_LIMIT, BOARD_SIZE = 8, 45, 20
 LEGEND_XP = 20000
 PRACTICE_RATE = 0.25          # all questions already answered
 REVIEW_RATE = 0.5             # mistake review
-PERFECT_BONUS = 60
-DAILY_BONUS_STEP, DAILY_BONUS_MAX = 5, 50
-CHEST_TABLE = [5, 10, 25, 50, 100]
+PERFECT_BONUS = 40
+DAILY_BONUS_STEP, DAILY_BONUS_MAX = 5, 40
+Q_XP_MIN, Q_XP_MAX, Q_XP_SCALE = 5, 10, 0.5   # base XP per question = sheet XP x 0.5, kept in 5-10
+CHEST_TABLE = [3, 5, 10, 20, 40]
+BIG_CHEST = 20
 CHEST_WEIGHTS = [25, 40, 22, 10, 3]
 MISTAKE_CAP, RECENT_CAP = 40, 20
 MEDALS = ["🥇", "🥈", "🥉"]
@@ -67,13 +82,15 @@ POWERUP_MAX = 3
 EXTRA_TIME = 15
 
 # Ink / Story Forge
-MAX_INK = 2
-INK_REGEN = timedelta(hours=24)
+MAX_INK = 3
+INK_REGEN = timedelta(hours=12)
 NAME_MAX, BIO_MAX, PASS_MIN = 20, 150, 6
 WORD_MIN = {"easy": 50, "medium": 75, "hard": 100}
 WORD_MAX = 250
-WRITE_XP_BASE = {"easy": 25, "medium": 45, "hard": 80}
-WRITE_XP_BONUS_MAX = {"easy": 25, "medium": 45, "hard": 70}
+WRITE_XP_BASE = {"easy": 100, "medium": 200, "hard": 250}
+WRITE_XP_BONUS_MAX = {"easy": 50, "medium": 100, "hard": 250}     # AI / teacher quality bonus
+WRITE_CAP = {"easy": 150, "medium": 300, "hard": 500}             # base + bonus, per essay
+FIRST_STORY_BONUS = 50                                            # first Story Forge essay of the day
 
 # Groq (one model only, small token budget)
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -86,6 +103,85 @@ AI_TOKENS_PER_MIN = 6000      # stays under the free-tier ~8k/min limit
 CLASS_BONUS = [50, 35, 25, 15, 10, 8, 6, 4, 3, 2]   # points for leaderboard ranks 1..10
 CLASS_SCORE_MODE = "total"    # "total" XP or "average" XP per player
 DEFAULT_CLASS_GOAL = 10000
+
+# Seasons (monthly reset)
+XP_PER_PRESTIGE = 1000            # 1000 season XP -> 1 permanent Internal XP (Prestige)
+SEASON_TOP_EGGS = [5, 3, 2]       # Owl Eggs for season rank 1, 2, 3
+SEASON_LEAGUE_DIV = 3             # + 1 egg for every 3 league steps reached (Bronze I = 0 ... Legend = 7)
+
+# Battles (Owl XP is a separate battle currency; academic XP is never touched by attacks)
+ARROW_MAX, ARROW_REGEN = 5, timedelta(hours=4)
+ATTACK_TIME = 30                  # seconds per wall
+WALLS_BASE, NEED_RATIO = 4, 0.6   # walls = 4 + Town Hall level + Watchtower level; break 60% to win
+OWL_LOOT_PCT, OWL_LOOT_MIN, OWL_LOOT_MAX = 0.10, 3, 20      # loot taken from the defender's Owl XP
+OWL_WIN_BONUS, OWL_PERFECT_BONUS = 10, 5
+OWL_UNDERDOG_STEP, OWL_UNDERDOG_MAX = 3, 12                  # per battle league the defender is above you
+OWL_FAIL_BASE, OWL_FAIL_STEP, OWL_FAIL_MAX = 3, 3, 18        # failed attack: Owl XP you lose
+OWL_DEFEND_BONUS = 3              # free Owl XP for the defender when an attack fails
+DEF_DAILY_CAP = 35                # most Owl XP a defender can lose to raids in one day
+RARE_DROP_CHANCE = 0.15           # a 3-star wipe may drop 1-3 Owl Eggs
+TARGET_COOLDOWN = timedelta(hours=3)
+REVENGE_WINDOW, REVENGE_MULT = timedelta(hours=48), 1.5
+SHIELD_AFTER_HIT_H = 8
+SHIELD_BUY_HOURS = 12
+WAR_WIN, WAR_DEFEND = 5, 3        # Class Battle points for cross-house attacks / defenses
+BATTLE_LEAGUES = [(0, "Recruit", "🪖"), (50, "Raider", "⚔️"), (150, "Knight", "🛡️"),
+                  (400, "Warlord", "🔥"), (1000, "Legend", "👑")]
+OWL_XP_RESETS_MONTHLY = False     # True = Owl XP also resets with the monthly season
+
+# 1v1 question duels (no arrows, no Owl XP cost)
+DUEL_Q, DUEL_TIME = 5, 30
+DUEL_EXPIRE, DUEL_COOLDOWN = timedelta(hours=24), timedelta(hours=24)
+DUEL_WIN_XP, DUEL_WIN_EGGS, DUEL_WIN_OWL, DUEL_LOSE_XP = 100, 2, 15, 10
+DUEL_DAILY_REWARDS = 3            # rewarded duel wins per player per day (stops farming)
+
+# Nest Hub buildings
+BLD_COL = {"nest": "nest_level", "hatchery": "hatchery_level", "vault": "vault_level",
+           "tower": "tower_level"}
+BLD_MAX = {"nest": 5, "hatchery": 3, "vault": 3, "tower": 3}
+BLD_INFO = {
+    "nest": ("🪺", "Owl Nest", "Town Hall: more walls, and it sets how high the other buildings can go."),
+    "hatchery": ("🥚", "Egg Hatchery", "Makes 1 Owl Egg by itself. Higher levels hatch faster."),
+    "vault": ("🛡️", "Shield Vault", "Your shield lasts longer after someone raids you."),
+    "tower": ("🗼", "Watchtower", "Adds extra walls to your nest so raiders have a harder time."),
+}
+TOWN_REQ = {2: (500, 5), 3: (2000, 10), 4: (5000, 20), 5: (10000, 35)}   # lifetime XP, Owl Eggs
+HATCH_REQ = {1: 30, 2: 150, 3: 400}                                       # Owl XP
+HATCH_HOURS = {1: 48, 2: 36, 3: 24}
+HATCH_CAP = 2                                                             # eggs the hatchery can hold
+VAULT_REQ = {1: (300, 2), 2: (1500, 8), 3: (4000, 20)}                    # lifetime XP, stories written
+VAULT_SHIELD_BONUS = {0: 0, 1: 3, 2: 6, 3: 9}                             # extra shield hours
+TOWER_REQ = {1: 40, 2: 200, 3: 500}                                       # Owl XP
+TOWER_WALLS = {0: 0, 1: 1, 2: 2, 3: 3}
+
+# Owl Egg shop: key -> (icon, title, description, cost)
+SHOP_ITEMS = [
+    ("pu_fifty", "✂️", "50/50 power-up", "+1 in your bag (max 3)", 2),
+    ("pu_time", "⏳", "+15s power-up", "+1 in your bag (max 3)", 2),
+    ("pu_skip", "⏭️", "Skip power-up", "+1 in your bag (max 3)", 2),
+    ("ink", "🖋️", "Ink charge", "Write another story right now", 3),
+    ("arrow", "🏹", "Arrow refill", "+1 attack arrow", 2),
+    ("shield", "🛡️", f"Nest shield {SHIELD_BUY_HOURS}h", "Nobody can attack you for a while", 5),
+    ("freeze", "🧊", "Streak freeze", "Saves your streak if you miss one day (max 2)", 4),
+]
+# Cosmetics: key -> (label, eggs)
+GLOWS = {"cyan": ("🩵 Neon Cyan", 5), "inferno": ("🔥 Inferno Red", 10),
+         "gold": ("✨ Gold Sparkle", 15), "aurora": ("🌈 Rainbow Aurora", 25)}
+BANNERS = {"midnight": ("🏰 Midnight Castle", 12), "library": ("📚 Ancient Library", 12),
+           "dragon": ("🐉 Dragon Lair", 15), "cyber": ("💠 Cyber Grid", 15)}
+TITLES = {"gladiator": ("Grammar Gladiator", 8), "smith": ("Story Smith", 8),
+          "master": ("Sentence Master", 12), "unstoppable": ("Unstoppable", 20)}
+FRAMES = {
+    "royal": ("👑 Royal", 10), "frost": ("❄️ Frost", 10), "emerald": ("💚 Emerald", 10),
+    "inferno": ("🔥 Inferno", 15), "rainbow": ("🌈 Rainbow", 20),
+}
+# kind -> (catalogue, equipped column, owned column, shop heading)
+COSMETICS = {
+    "glow": (GLOWS, "name_glow", "glows_owned", "✨ Name glows"),
+    "banner": (BANNERS, "banner", "banners_owned", "🖼️ Profile banners"),
+    "title": (TITLES, "title", "titles_owned", "🏷️ Custom titles"),
+    "frame": (FRAMES, "frame", "frames_owned", "⭕ Avatar frames"),
+}
 
 TEACHER_ROLES = {"teacher", "admin"}
 
@@ -103,7 +199,7 @@ ACHIEVEMENTS = [
     ("Week Warrior 🔥", "Keep a 7-day streak", 80),
     ("Ink Master 🖋️", "Finish 10 Story Forge writings", 75),
     ("Word Warrior 📝", "Complete a Hard difficulty writing", 70),
-    ("Chest Hunter 🎁", "Open a chest with 50+ XP", 65),
+    ("Chest Hunter 🎁", "Open a chest with 20+ XP", 65),
     ("Combo King 👑", "Get a combo of 5+ correct answers", 60),
     ("Perfect Score 💯", "Get all answers correct in one quest", 55),
     ("Daily Hero 📅", "Keep a 5-day streak", 50),
@@ -121,12 +217,29 @@ USER_COLS = (
     "ink_charges", "last_ink_grant", "last_writing_at", "writings_done",
     "last_rank", "written_prompts",
     "class", "role", "mistakes", "recent", "powerups", "assign_done",
+    # lifetime counters + Owl Eggs (never reset)
+    "perfect_count", "best_combo", "best_streak", "quests_done", "big_chests",
+    "hard_writings", "owl_eggs", "ach_claimed", "internal_xp", "banked_xp", "season",
+    # battles, shop and cosmetics
+    "arrows", "last_arrow_grant", "nest_level", "shield_until", "attacks_won", "defends_won",
+    "revenges_won", "total_looted", "trophies", "attack_streak", "streak_freeze",
+    "frames_owned", "frame",
+    # Clash of Nests: Owl XP, buildings, cosmetics, integrity notes
+    "owl_xp", "hatchery_level", "vault_level", "tower_level", "hatch_pending", "hatch_anchor",
+    "name_glow", "glows_owned", "banner", "banners_owned", "title", "titles_owned", "academic_notes",
 )
 Q_COLS = (
     "id", "week", "question", "option_a", "option_b", "option_c", "option_d",
     "correct", "xp", "difficulty", "active", "explanation",
 )
 PROMPT_COLS = ("id", "title", "prompt", "difficulty", "active")
+BATTLE_COLS = ("id", "time", "attacker", "defender", "a_class", "d_class", "walls", "broken",
+               "need", "result", "loot", "attacker_loss", "bonus", "revenge_of", "revenge_used",
+               "stars", "rare_eggs")
+CHALLENGE_COLS = ("id", "time", "challenger", "defender", "difficulty", "target", "q_ids", "c_score",
+                  "d_score", "status", "winner", "resolved_at", "rewarded")
+HOF_COLS = ("season", "rank", "username", "display_name", "class", "xp", "league", "eggs",
+            "prestige_gain")
 # These tabs are read by column POSITION (works with or without a header row)
 PROGRESS_COLS = ("username", "question_id", "correct", "time")
 LOG_COLS = ("username", "prompt_id", "difficulty", "text", "xp", "score", "time",
@@ -136,12 +249,15 @@ SET_COLS = ("key", "value")
 TAB_COLS = {
     "users": USER_COLS, "questions": Q_COLS, "writing_prompts": PROMPT_COLS,
     "progress": PROGRESS_COLS, "writing_log": LOG_COLS, "settings": SET_COLS,
+    "battles": BATTLE_COLS, "hall_of_fame": HOF_COLS, "challenges": CHALLENGE_COLS,
 }
-HEADERLESS = {"progress", "writing_log", "settings"}
+HEADERLESS = {"progress", "writing_log", "settings", "battles", "hall_of_fame", "challenges"}
 HEADER_FIRST = {"progress": ("username", "user"), "writing_log": ("username", "user"),
-                "settings": ("key",)}
+                "settings": ("key",), "battles": ("id",), "hall_of_fame": ("season",),
+                "challenges": ("id",)}
+AUTO_TABS = {"settings", "battles", "hall_of_fame", "challenges"}   # created automatically when missing
 TTL = {"users": 45, "questions": 600, "writing_prompts": 600,
-       "progress": 300, "writing_log": 120, "settings": 120}
+       "progress": 300, "writing_log": 120, "settings": 120, "battles": 20, "hall_of_fame": 600, "challenges": 20}
 
 
 # ----------------------------------------------------------- small helpers
@@ -271,6 +387,22 @@ def art(name: str, emoji: str, cls="art") -> str:
             else f'<span class="{cls} emoji">{emoji}</span>')
 
 
+@st.cache_data(show_spinner=False)
+def _load_raw(path: str, mtime: float) -> str:
+    p = Path(path)
+    kind = {".gif": "gif", ".webp": "webp", ".png": "png"}[p.suffix.lower()]
+    return f"data:image/{kind};base64," + base64.b64encode(p.read_bytes()).decode()
+
+
+def anim(name: str, emoji: str, cls="art") -> str:
+    """Animated GIF/WebP from assets/images/anim/. Falls back to the still PNG, then an emoji."""
+    for e in (".gif", ".webp", ".png"):
+        p = ANIM_DIR / f"{name}{e}"
+        if p.exists() and p.stat().st_size <= 2_500_000:
+            return f'<img class="{cls} anim" src="{_load_raw(str(p), p.stat().st_mtime)}" alt="">'
+    return art(name, emoji, cls)
+
+
 def league_icon(i: int, size=64, cls="lg-ico") -> str:
     key, label, fam, num = LEAGUES[i]
     src = pic(LEAGUE_DIR, key, size, (".ico", ".png"))
@@ -278,10 +410,11 @@ def league_icon(i: int, size=64, cls="lg-ico") -> str:
             else f'<span class="lg-fallback lg-{fam} {cls}">{num}</span>')
 
 
-def avatar(username: str, name: str, fam: str, cls="") -> str:
+def avatar(username: str, name: str, fam: str, cls="", frame="") -> str:
     src = pic(PROFILE_DIR, username.lower(), 112, (".jpeg", ".jpg", ".png"), square=True)
     inner = f'<img src="{src}" alt="">' if src else esc((name or username)[:1].upper())
-    return f'<div class="avatar lg-{fam} {cls}">{inner}</div>'
+    fr = f" frame-{frame}" if frame in FRAMES else ""
+    return f'<div class="avatar lg-{fam} {cls}{fr}">{inner}</div>'
 
 
 # ----------------------------------------------------------------- sound
@@ -298,6 +431,15 @@ correct:[[784,.12,'triangle',.18,0],[1047,.28,'triangle',.18,.1]],
 combo:[[523,.08,'triangle',.15,0],[659,.08,'triangle',.15,.08],[784,.08,'triangle',.15,.16],[1047,.25,'triangle',.15,.24]],
 wrong:[[220,.25,'sawtooth',.1,0],[165,.35,'sawtooth',.1,.15]],
 tick:[[880,.05,'square',.05,0]],
+hit:[[180,.1,'sawtooth',.2,0],[110,.25,'square',.18,.06]],
+owl:[[392,.4,'sine',.13,0],[330,.55,'sine',.13,.42]],
+clash:[[70,.4,'sine',.4,0],[55,.5,'triangle',.35,.12],[140,.12,'square',.12,0]],
+victory:[[523,.14,'triangle',.18,0],[659,.14,'triangle',.18,.14],[784,.14,'triangle',.18,.28],[1047,.55,'triangle',.2,.42]],
+defeat:[[440,.22,'sawtooth',.1,0],[370,.22,'sawtooth',.1,.2],[311,.22,'sawtooth',.1,.4],[220,.55,'sawtooth',.1,.6]],
+wall_break:[[150,.05,'sawtooth',.22,0],[90,.05,'square',.2,.03],[210,.04,'sawtooth',.2,.06],[70,.12,'square',.22,.09],[120,.22,'sawtooth',.16,.15]],
+egg_drop:[[1568,.12,'sine',.15,0],[2093,.45,'sine',.15,.1],[2637,.5,'sine',.08,.2]],
+shield:[[500,.1,'sine',.15,0],[750,.2,'sine',.15,.1]],
+egg:[[500,.08,'sine',.15,0],[700,.08,'sine',.15,.08],[900,.3,'sine',.15,.16]],
 timeup:[[300,.2,'sawtooth',.1,0],[200,.45,'sawtooth',.1,.2]],
 chest:[[600,.1,'sine',.15,0],[800,.1,'sine',.15,.1],[1000,.1,'sine',.15,.2],[1400,.35,'sine',.15,.3]],
 finish:[[523,.15,'triangle',.16,0],[659,.15,'triangle',.16,.15],[784,.15,'triangle',.16,.3],[1047,.45,'triangle',.16,.45]],
@@ -394,8 +536,8 @@ def _worksheet(name: str, create: bool = False):
             last = e
     if create:
         ws = _api(ss.add_worksheet, name, 200, max(2, len(TAB_COLS.get(name, ()))))
-        if name == "settings":
-            _api(ws.batch_update, [{"range": "A1:B1", "values": [["key", "value"]]}],
+        if name in TAB_COLS:
+            _api(ws.batch_update, [{"range": "A1", "values": [list(TAB_COLS[name])]}],
                  value_input_option="RAW")
         st_["ws"][name] = ws
         return ws
@@ -456,7 +598,7 @@ def read_tab(name: str, force: bool = False, strict: bool = False) -> pd.DataFra
                 raise ConnectionError(f"{name} unavailable")
             return ent["df"]
         try:
-            ws = _worksheet(name)
+            ws = _worksheet(name, create=(name in AUTO_TABS))
             values = _api(ws.get_all_values)
             df, colmap = _to_df(name, values, cols)
             st_["tabs"][name] = {"ts": time.time(), "df": df, "colmap": colmap, "ok": True}
@@ -523,7 +665,7 @@ def update_row(tab: str, sheet_row: int, fields: dict) -> None:
 def append_row_tab(tab: str, d: dict) -> None:
     st_ = _store()
     with st_["lock"]:
-        ws = _worksheet(tab, create=(tab == "settings"))
+        ws = _worksheet(tab, create=(tab in AUTO_TABS))
         colmap = ensure_columns(tab, list(d)) if tab not in HEADERLESS else \
             {c: i + 1 for i, c in enumerate(TAB_COLS[tab])}
         n = max(colmap.values())
@@ -536,6 +678,53 @@ def append_row_tab(tab: str, d: dict) -> None:
         ent = st_["tabs"].get(tab)
         if ent:
             ent["ts"] = 0          # re-read on next use
+
+
+def append_rows_tab(tab: str, rows: list) -> None:
+    """Append many rows (list of dicts) to a header-less tab in one request."""
+    if not rows:
+        return
+    st_ = _store()
+    with st_["lock"]:
+        ws = _worksheet(tab, create=(tab in AUTO_TABS))
+        cols = TAB_COLS[tab]
+        _grid(ws, len(cols))
+        _api(ws.append_rows, [[d.get(c, "") for c in cols] for d in rows], value_input_option="RAW")
+        ent = st_["tabs"].get(tab)
+        if ent:
+            ent["ts"] = 0
+
+
+def bulk_update(tab: str, changes: dict) -> None:
+    """changes = {sheet_row: {field: value}}. One request for all rows (used by the season reset)."""
+    if not changes:
+        return
+    st_ = _store()
+    with st_["lock"]:
+        df = read_tab(tab, force=True, strict=True)
+        fields = sorted({k for f in changes.values() for k in f})
+        colmap = ensure_columns(tab, fields)
+        ws = _worksheet(tab)
+        _grid(ws, max(colmap[k] for k in fields))
+        first, last = int(df["_row"].min()), int(df["_row"].max())
+        existing = {int(r["_row"]): r for r in df.to_dict("records")}
+        data = []
+        for k in fields:
+            vals = []
+            for r in range(first, last + 1):
+                if r in changes and k in changes[r]:
+                    v = changes[r][k]
+                else:
+                    v = existing.get(r, {}).get(k, "")
+                    if isinstance(v, str) and re.fullmatch(r"-?\d+", v.strip() or "x"):
+                        v = int(v)
+                vals.append([v])
+            data.append({"range": f"{rowcol_to_a1(first, colmap[k])}:{rowcol_to_a1(last, colmap[k])}",
+                         "values": vals})
+        _api(ws.batch_update, data, value_input_option="RAW")
+        ent = st_["tabs"].get(tab)
+        if ent:
+            ent["ts"] = 0
 
 
 def users_df() -> pd.DataFrame:
@@ -656,6 +845,22 @@ def ink_calc(row: dict, now=None):
     return charges, anchor
 
 
+def regen_calc(row: dict, ccol: str, acol: str, maxn: int, regen, start: int, now=None):
+    """Generic recharge: returns (charges now, moment the timer counts from)."""
+    now = now or datetime.now(TZ)
+    charges = max(0, min(maxn, to_int(row.get(ccol), 0)))
+    anchor = parse_ts(row.get(acol))
+    if anchor is None:
+        return max(charges, start), now
+    if charges >= maxn:
+        return maxn, now
+    gained = int((now - anchor) // regen)
+    if gained > 0:
+        charges = min(maxn, charges + gained)
+        anchor = now if charges >= maxn else anchor + gained * regen
+    return charges, anchor
+
+
 def ink_state(row: dict):
     """(charges, time until next charge or None)."""
     now = datetime.now(TZ)
@@ -703,38 +908,9 @@ def sync_me() -> None:
 
 
 def compute_achievements(cur: dict, extra=None) -> set:
-    ach = {a.strip() for a in str(cur.get("achievements", "")).split(",") if a.strip()}
-    extra = extra or {}
-    total = to_int(extra.get("total", cur.get("xp")))
-    streak = to_int(extra.get("streak", cur.get("streak")))
-    writings = to_int(extra.get("writings_done", cur.get("writings_done")))
-    if extra.get("first_quest"):
-        ach.add("First Quest ✅")
-    if extra.get("perfect"):
-        ach.add("Perfect Score 💯")
-    if extra.get("best_combo", 0) >= 5:
-        ach.add("Combo King 👑")
-    if streak >= 3:
-        ach.add("Streak Starter 🌱")
-    if streak >= 5:
-        ach.add("Daily Hero 📅")
-    if streak >= 7:
-        ach.add("Week Warrior 🔥")
-    if total >= 5000:
-        ach.add("XP Hunter ⚡")
-    if total >= 10000:
-        ach.add("Legend Path 👑")
-    if extra.get("leveled"):
-        ach.add("League Climber 🏆")
-    if extra.get("chest", 0) >= 50:
-        ach.add("Chest Hunter 🎁")
-    if writings >= 1 or extra.get("first_story"):
-        ach.add("First Story ✅")
-    if writings >= 10:
-        ach.add("Ink Master 🖋️")
-    if extra.get("hard_writing"):
-        ach.add("Word Warrior 📝")
-    return ach
+    """Achievements are now tiered and claimed by the player (see claim_achievement).
+    Old badges stay as cosmetic history; nothing is auto-awarded any more."""
+    return {a.strip() for a in str(cur.get("achievements", "")).split(",") if a.strip()}
 
 
 def add_xp(username: str, amount: int) -> None:
@@ -745,6 +921,173 @@ def add_xp(username: str, amount: int) -> None:
         return {"xp": total, "badges": LEAGUES[league_of(total)][1],
                 "achievements": ", ".join(sorted(ach))}
     modify_user(username, fn)
+
+
+# ======================================================================
+
+# key -> what to count (a lifetime counter column in the users sheet) and the 3 tier targets
+ACH_TIERS = {
+    "perfect": {"icon": "💯", "title": "Perfect Score", "col": "perfect_count",
+                "how": "Finish quests with every answer correct", "steps": (10, 50, 200)},
+    "combo": {"icon": "👑", "title": "Combo King", "col": "best_combo",
+              "how": "Best combo of correct answers in a row", "steps": (5, 8, 12)},
+    "streak": {"icon": "🔥", "title": "Streak Master", "col": "best_streak",
+               "how": "Best daily play streak (days)", "steps": (7, 30, 100)},
+    "quests": {"icon": "⚔️", "title": "Quest Runner", "col": "quests_done",
+               "how": "Finish quests", "steps": (10, 50, 200)},
+    "ink": {"icon": "🖋️", "title": "Ink Master", "col": "writings_done",
+            "how": "Finish Story Forge writings", "steps": (10, 50, 200)},
+    "hard": {"icon": "📝", "title": "Word Warrior", "col": "hard_writings",
+             "how": "Finish Hard writings", "steps": (1, 10, 40)},
+    "chest": {"icon": "🎁", "title": "Chest Hunter", "col": "big_chests",
+              "how": "Open chests worth 20+ XP", "steps": (1, 10, 50)},
+    "raider": {"icon": "🗡️", "title": "Raider", "col": "attacks_won",
+               "how": "Win attacks in the Battle Arena", "steps": (5, 25, 100)},
+    "guardian": {"icon": "🛡️", "title": "Guardian", "col": "defends_won",
+                 "how": "Defend your nest when someone attacks", "steps": (5, 25, 100)},
+}
+# (owl eggs, XP) paid for tier I, II, III
+ACH_REWARDS = ((1, 50), (3, 150), (10, 500))
+STAR_FULL, STAR_EMPTY = "⭐", "☆"
+
+
+def tier_badge(key: str, tier: int) -> str:
+    return f"{ACH_TIERS[key]['title']} {ROMAN[tier - 1]}"
+
+
+for _k in ACH_TIERS:                       # rarer tiers show first on the leaderboard
+    for _t in (1, 2, 3):
+        ACH_ORDER[tier_badge(_k, _t)] = 50 + _t * 15
+
+
+def parse_claimed(s) -> dict:
+    """'perfect:2;combo:1' -> {'perfect': 2, 'combo': 1}"""
+    out = {}
+    for part in str(s or "").split(";"):
+        if ":" in part:
+            k, v = part.split(":", 1)
+            out[k.strip()] = to_int(v)
+    return out
+
+
+def claimed_to_str(d: dict) -> str:
+    return ";".join(f"{k}:{v}" for k, v in sorted(d.items()) if v > 0)
+
+
+def ach_status(row: dict, key: str) -> dict:
+    spec = ACH_TIERS[key]
+    steps = spec["steps"]
+    value = to_int(row.get(spec["col"]))
+    reached = sum(1 for s in steps if value >= s)
+    claimed = min(reached, parse_claimed(row.get("ach_claimed")).get(key, 0))
+    return {
+        "value": value, "reached": reached, "claimed": claimed,
+        "prev": steps[reached - 1] if reached else 0,
+        "next": steps[reached] if reached < len(steps) else None,
+    }
+
+
+def pending_reward(s: dict) -> tuple:
+    tiers = range(s["claimed"] + 1, s["reached"] + 1)
+    return (sum(ACH_REWARDS[t - 1][0] for t in tiers),
+            sum(ACH_REWARDS[t - 1][1] for t in tiers))
+
+
+def unlocked_tiers(row: dict) -> set:
+    out = set()
+    for k in ACH_TIERS:
+        for t in range(1, ach_status(row, k)["claimed"] + 1):
+            out.add(tier_badge(k, t))
+    return out
+
+
+def claimable_count(row: dict) -> int:
+    n = 0
+    for k in ACH_TIERS:
+        s = ach_status(row, k)
+        n += s["reached"] > s["claimed"]
+    return n
+
+
+def claim_achievement(username: str, key: str):
+    """Atomic claim: pays all unclaimed tiers of one achievement. Returns a dict or None."""
+    out = {"eggs": 0, "xp": 0, "tiers": 0}
+
+    def fn(cur):
+        s = ach_status(cur, key)
+        if s["reached"] <= s["claimed"]:
+            return {}
+        eggs, xp_gain = pending_reward(s)
+        claimed = parse_claimed(cur.get("ach_claimed"))
+        claimed[key] = s["reached"]
+        total = to_int(cur.get("xp")) + xp_gain
+        title = ACH_TIERS[key]["title"] + " "
+        badges = [b for b in all_badges(cur.get("achievements", "")) if not b.startswith(title)]
+        badges.append(tier_badge(key, s["reached"]))
+        out.update(eggs=eggs, xp=xp_gain, tiers=s["reached"] - s["claimed"], tier=s["reached"])
+        return {
+            "owl_eggs": to_int(cur.get("owl_eggs")) + eggs,
+            "ach_claimed": claimed_to_str(claimed),
+            "xp": total, "badges": LEAGUES[league_of(total)][1],
+            "achievements": ", ".join(sorted(badges)),
+        }
+
+    modify_user(username, fn)
+    return out if out["tiers"] else None
+
+
+def claim_ach(key: str) -> None:
+    """Button callback."""
+    me = st.session_state.user
+    try:
+        res = claim_achievement(me["username"], key)
+    except Exception as e:
+        st.session_state.flash = friendly_error(e, "claim achievement")
+        return
+    if res:
+        spec = ACH_TIERS[key]
+        st.session_state.flash_ok = (f"{spec['icon']} {spec['title']} {ROMAN[res['tier'] - 1]} claimed! "
+                                     f"+{res['eggs']} 🥚 Owl Egg{'s' if res['eggs'] != 1 else ''} · +{res['xp']} XP")
+        st.session_state.egg_anim = True
+        sfx("egg_drop", "levelup")
+
+
+def render_achievements(row: dict) -> None:
+    eggs = to_int(row.get("owl_eggs"))
+    if st.session_state.pop("egg_anim", False):
+        ui(f'<div class="glass hero celebrate">{anim("egg_claim", "🥚")}</div>')
+    ready = claimable_count(row)
+    ui(f'''
+    <div class="glass hero">
+      <div class="egg-count">🥚 <b>{eggs}</b> Owl Egg{"s" if eggs != 1 else ""}</div>
+      <small>Earn eggs by completing achievements. Eggs can never be stolen.</small>
+      {f'<div class="ink-banner">🎁 {ready} reward{"s" if ready != 1 else ""} ready to claim!</div>' if ready else ""}
+    </div>
+    ''')
+    order = sorted(ACH_TIERS, key=lambda k: (ach_status(row, k)["reached"] <= ach_status(row, k)["claimed"], k))
+    for key in order:                        # claimable ones first
+        spec, s = ACH_TIERS[key], ach_status(row, key)
+        stars = STAR_FULL * s["claimed"] + STAR_EMPTY * (3 - s["claimed"])
+        if s["next"]:
+            span = max(1, s["next"] - s["prev"])
+            pct = max(0, min(100, int((s["value"] - s["prev"]) / span * 100)))
+            prog = f'{s["value"]:,} / {s["next"]:,}'
+        else:
+            pct, prog = 100, "MAX ✨"
+        is_ready = s["reached"] > s["claimed"]
+        ui(f'''
+        <div class="glass ach-card{" ready" if is_ready else ""}">
+          <div class="ach-top"><span class="ach-ico">{spec["icon"]}</span>
+            <div class="ach-info"><b>{esc(spec["title"])}</b><small>{esc(spec["how"])}</small></div>
+            <div class="ach-stars">{stars}</div></div>
+          <div class="bar sm"><i style="width:{pct}%"></i></div>
+          <div class="ach-prog">{prog}</div>
+        </div>
+        ''')
+        if is_ready:
+            e, x = pending_reward(s)
+            st.button(f"🥚 Claim  +{e} egg{'s' if e != 1 else ''} · +{x} XP", key=f"claim_{key}",
+                      on_click=claim_ach, args=(key,))
 
 
 # --- inventory / mistakes / difficulty -------------------------------------
@@ -813,8 +1156,14 @@ def save_results(user: dict, q: dict, gained: int) -> dict:
         except ValueError:
             last_d = None
         streak, daily = to_int(cur.get("streak")), 0
+        freeze_left = to_int(cur.get("streak_freeze"))
         if last_d != today:
-            streak = streak + 1 if last_d == today - timedelta(days=1) else 1
+            if last_d == today - timedelta(days=1):
+                streak += 1
+            elif last_d == today - timedelta(days=2) and freeze_left > 0 and streak > 0:
+                streak, freeze_left = streak + 1, freeze_left - 1      # a streak freeze saves the day
+            else:
+                streak = 1
             daily = min(DAILY_BONUS_STEP * streak, DAILY_BONUS_MAX)
         old_xp = to_int(cur.get("xp"))
         total = old_xp + max(0, gained) + daily
@@ -835,7 +1184,14 @@ def save_results(user: dict, q: dict, gained: int) -> dict:
         recent = cur.get("recent", "")
         if q["mode"] == "normal":
             recent += "".join("1" if ok else "0" for _, ok in q["log"])
+        counted = q["mode"] != "review"
         fields = {
+            "streak_freeze": freeze_left,
+            "perfect_count": to_int(cur.get("perfect_count")) + (1 if full else 0),
+            "best_combo": max(to_int(cur.get("best_combo")), q["best"]),
+            "best_streak": max(to_int(cur.get("best_streak")), streak),
+            "quests_done": to_int(cur.get("quests_done")) + (1 if counted else 0),
+            "big_chests": to_int(cur.get("big_chests")) + (1 if q.get("chest", 0) >= BIG_CHEST else 0),
             "xp": total, "badges": LEAGUES[league_of(total)][1],
             "achievements": ", ".join(sorted(ach)), "streak": streak,
             "last_played": today.isoformat(), "answered": answered,
@@ -1096,6 +1452,8 @@ def init_state():
 
 def go(page):
     st.session_state.page = page
+    if page == "nest":
+        sfx("owl")
 
 
 def open_edit():
@@ -1123,6 +1481,9 @@ def nav():
         st.button("🏆", key="nav_home", on_click=go, args=("home",), help="Arena")
         st.button("⚔️", key="nav_quests", on_click=go, args=("quests",), help="Quests")
         st.button(ink_label, key="nav_story", on_click=go, args=("story",), help="Story Forge")
+        st.button("🛡️", key="nav_battle", on_click=go, args=("battle",), help="Battle Arena")
+        st.button("🏰", key="nav_nest", on_click=go, args=("nest",), help="Nest Hub")
+        st.button("🛒", key="nav_shop", on_click=go, args=("shop",), help="Egg Shop")
         st.button("🎖️", key="nav_leagues", on_click=go, args=("leagues",), help="Leagues")
         st.button("👤", key="nav_profile", on_click=go, args=("profile",), help="Profile")
         if is_teacher(me):
@@ -1136,8 +1497,8 @@ def page_login():
     ui(f'''
     <div class="glass hero login-hero">
       {art("mascot_idle", "🦉")}
-      <h1>LingoQuest</h1>
-      <p class="tagline">Learn English. Earn XP. Climb the leagues.</p>
+      <h1>Clash of Nests</h1>
+      <p class="tagline">Learn English. Build your nest. Win the clash.</p>
       <div class="login-sparkles">✨ 🌟 ✨</div>
     </div>
     ''')
@@ -1193,6 +1554,10 @@ def lb_row(rank: int, r, mine: bool) -> str:
     if all_b:
         chips += f'<span class="chip chip-count">🏆 {len(all_b)}</span>'
     chips += f'<span class="chip chip-stories">🖋️ {stories}</span>'
+    if to_int(r.get("internal_xp")):
+        chips += f'<span class="chip chip-prestige">⭐ P{to_int(r.get("internal_xp"))}</span>'
+    bl = battle_league(owl_xp_of(r))
+    chips += f'<span class="chip chip-owl">{BATTLE_LEAGUES[bl][2]} {BATTLE_LEAGUES[bl][1]}</span>'
     if cls:
         chips += f'<span class="chip chip-class">🏫 {esc(cls)}</span>'
     bio = (r.get("bio") or "").strip()
@@ -1207,8 +1572,9 @@ def lb_row(rank: int, r, mine: bool) -> str:
         f'<details class="lb-row{" me" if mine else ""}{top}">'
         f'<summary class="lb-main">'
         f'<div class="rank">{medal}{delta}</div>'
-        + avatar(r["username"], name, fam)
-        + f'<div class="who"><b>{esc(name)}{fire}</b>'
+        + avatar(r["username"], name, fam, "", r.get("frame", ""))
+        + f'<div class="who"><b>{styled_name(name, r.get("name_glow", ""))}{fire}'
+          f'<span class="nest-badge">🏰 Lv.{nest_level(r)}</span></b>{title_tag(r.get("title", ""))}'
           f'<div class="lg-line lg-{fam}">{league_icon(i, 32)}<span>{label}</span></div>'
           f'{bio_html}<div class="chips">{chips}</div></div>'
           f'<div class="xp-col"><div class="xp">{xp:,}<small>XP</small></div>'
@@ -1221,14 +1587,15 @@ def lb_row(rank: int, r, mine: bool) -> str:
     )
 
 
-def class_scores(df: pd.DataFrame):
-    """Class score = members' XP + bonus points for members' leaderboard places."""
+def class_scores(df: pd.DataFrame, war=None):
+    """Class score = members' XP + bonus for members' leaderboard places + war points."""
+    war = war or {}
     d = df.copy()
     d["cls"] = d["class"].str.strip()
     d = d[d["cls"] != ""]
     out = {}
     for _, r in d.iterrows():
-        c = out.setdefault(r["cls"], {"name": r["cls"], "players": 0, "xp": 0, "bonus": 0})
+        c = out.setdefault(r["cls"], {"name": r["cls"], "players": 0, "xp": 0, "bonus": 0, "war": 0})
         c["players"] += 1
         c["xp"] += int(r["xp"])
     reasons = []
@@ -1238,13 +1605,14 @@ def class_scores(df: pd.DataFrame):
             out[cls]["bonus"] += CLASS_BONUS[pos]
             reasons.append((pos + 1, r["display_name"] or r["username"], cls, CLASS_BONUS[pos]))
     for c in out.values():
+        c["war"] = int(war.get(c["name"], 0))
         base = c["xp"] if CLASS_SCORE_MODE == "total" else round(c["xp"] / max(1, c["players"]))
-        c["score"] = base + c["bonus"]
+        c["score"] = base + c["bonus"] + c["war"]
     return sorted(out.values(), key=lambda c: -c["score"]), reasons
 
 
 def class_battle_html(df: pd.DataFrame, my_class: str) -> str:
-    scores, reasons = class_scores(df)
+    scores, reasons = class_scores(df, war_points())
     if not scores:
         return ""
     goal = to_int(get_setting("class_goal_xp"), DEFAULT_CLASS_GOAL) or DEFAULT_CLASS_GOAL
@@ -1261,7 +1629,7 @@ def class_battle_html(df: pd.DataFrame, my_class: str) -> str:
             f'<b>{esc(c["name"])}</b><small>{c["players"]} players</small>'
             f'<span class="cls-score">{c["score"]:,}<small>pts</small></span></div>'
             f'<div class="bar sm"><i style="width:{pct}%"></i></div>'
-            f'<div class="cls-sub">⭐ {c["xp"]:,} XP + 🏅 {c["bonus"]} bonus · {goal_txt}</div></div>'
+            f'<div class="cls-sub">⭐ {c["xp"]:,} XP + 🏅 {c["bonus"]} bonus + ⚔️ {c["war"]} war · {goal_txt}</div></div>'
         )
     scale = " · ".join(f'{MEDALS[i] if i < 3 else "#" + str(i + 1)} +{p}'
                        for i, p in enumerate(CLASS_BONUS))
@@ -1272,7 +1640,8 @@ def class_battle_html(df: pd.DataFrame, my_class: str) -> str:
         '<div class="glass class-card"><h3>🏫 Class Battle</h3>' + rows +
         '<details class="cls-why"><summary>❓ Why do classes get bonus points?</summary>'
         f'<p>Class score = {mode_txt} + bonus points. When a player finishes in the Top 10 '
-        f'of the leaderboard, their class earns bonus points: {scale}.</p>'
+        f'of the leaderboard, their class earns bonus points: {scale}. Attacking another house earns ⚔️ war points '
+        f'(+{WAR_WIN} for a win, +{WAR_DEFEND} for a defense) this season.</p>'
         f'<div class="cls-reasons">{why}</div></details></div>'
     )
 
@@ -1304,7 +1673,7 @@ def page_home():
     try:
         d = datetime.strptime(urow.get("last_played", ""), "%Y-%m-%d").date()
         t = datetime.now(TZ).date()
-        streak = to_int(urow.get("streak")) if d >= t - timedelta(days=1) else 0
+        streak = to_int(urow.get("streak")) if d >= t - timedelta(days=(2 if to_int(urow.get("streak_freeze")) else 1)) else 0
         today_done = d == t
     except ValueError:
         pass
@@ -1322,11 +1691,30 @@ def page_home():
         rival = f'<div class="rival">👑 You lead by {xp - int(df.loc[1, "xp"]):,} XP!</div>'
 
     charges, _ = ink_state(urow)
+    eggs, (arrows, _), prestige = to_int(urow.get("owl_eggs")), arrow_state(urow), to_int(urow.get("internal_xp"))
+    season_html = f'<div class="season-chip">🗓️ Season ends in {days_left_in_season()}d</div>'
     ink_banner = ""
     if charges > 0:
         ink_banner = (f'<div class="ink-banner">🖋️ {charges} Ink Charge{"s" if charges != 1 else ""} ready</div>')
     cls = (urow.get("class") or "").strip()
     cls_chip = f'<span class="chip chip-class">🏫 {esc(cls)}</span>' if cls else ""
+    if prestige:
+        cls_chip += f'<span class="chip chip-prestige">⭐ Prestige {prestige}</span>'
+
+    # --- main player card (edit button lives INSIDE the card)
+    with st.container(key="homecard"):
+        ui(f'''
+        {nest_scene_html(urow)}
+        <div class="stats">
+          <div class="stat"><b>{xp:,}</b><span>XP</span></div>
+          <div class="stat"><b>#{pos + 1 if pos is not None else "-"}</b><span>Rank</span></div>
+          <div class="stat"><b>{eggs}</b><span>Eggs 🥚</span></div>
+          <div class="stat"><b>{arrows}</b><span>Arrows 🏹</span></div>
+        </div>
+        <div class="bar"><i style="width:{pct}%"></i></div>
+        <div class="pc-notes">{nxt_html}{rival}{streak_html}{ink_banner}{season_html}</div>
+        ''')
+        st.button("Edit Profile", key="edit_me_mini", on_click=open_edit)
 
     # --- notices from the teacher
     ann = ""
@@ -1342,27 +1730,24 @@ def page_home():
            f'{len(assign["ids"])} questions · +{assign["bonus"]} bonus XP</div>')
         st.button("📌 Start assigned quest", key="assign_start", on_click=start_quest, args=("assign",))
 
-    # --- main player card (edit button lives INSIDE the card)
-    with st.container(key="homecard"):
-        ui(f'''
-        <div class="pc-head lg-{fam}">
-          {avatar(me["username"], me["name"], fam, "pc")}
-          <div class="pc-mid">
-            <h2>{esc(me["name"])}</h2>
-            <p class="tier">{label} · {xp:,} XP</p>
-            {cls_chip}
-          </div>
-          {league_icon(li, 96, "lg-ico pc")}
-        </div>
-        <div class="stats">
-          <div class="stat"><b>{xp:,}</b><span>XP</span></div>
-          <div class="stat"><b>#{pos + 1 if pos is not None else "-"}</b><span>Rank</span></div>
-          <div class="stat"><b>{charges}</b><span>Ink 🖋️</span></div>
-        </div>
-        <div class="bar"><i style="width:{pct}%"></i></div>
-        <div class="pc-notes">{nxt_html}{rival}{streak_html}{ink_banner}</div>
-        ''')
-        st.button("Edit Profile", key="edit_me_mini", on_click=open_edit)
+    try:
+        new_season_card(me)
+        inc = incoming_duels(me["username"])
+        if inc:
+            ui(f'<div class="glass notice duel-alert">📩 <b>Challenge Alert!</b> {len(inc)} classmate'
+               f'{"s are" if len(inc) != 1 else " is"} waiting for your answer.</div>')
+            st.button("📩 See challenges", key="duel_go_home", on_click=open_duels)
+        hn, _ = hatch_state(urow)
+        if hn:
+            ui(f'<div class="glass notice">🥚 Your hatchery has <b>{hn}</b> egg{"s" if hn != 1 else ""} ready!</div>')
+            st.button("🥚 Go to Nest Hub", key="hatch_go_home", on_click=go, args=("nest",))
+        rv = revenge_ready(me["username"])
+        if rv and attacks_enabled():
+            ui(f'<div class="glass notice revenge">😤 {len(rv)} hit{"s" if len(rv) != 1 else ""} on you can be '
+               f'avenged. Revenge is free for 48 hours!</div>')
+            st.button("😤 Take revenge", key="rev_go", on_click=open_revenge)
+    except Exception as e:
+        log.warning("home battle banners failed: %s", type(e).__name__)
 
     c1, c2 = st.columns([1, 1], gap="small")
     with c1:
@@ -1386,6 +1771,10 @@ def page_home():
         rows_html += '<div class="gap">• • •</div>' + lb_row(pos + 1, row, True)
     if rows_html:
         ui(f'<div class="lb-list">{rows_html}</div>')
+    try:
+        visit_picker(df)
+    except Exception as e:
+        log.warning("visit picker failed: %s", type(e).__name__)
 
 
 # ----------------------------------------------------------------- quest
@@ -1438,13 +1827,18 @@ def pick_next(q: dict) -> None:
     pool = q["pool"]
     if not pool:
         return
-    if q["mode"] in ("review", "assign"):
+    if q["mode"] in ("review", "assign", "attack", "challenge"):
         q["qs"].append(pool.pop(0))
         return
     shift = 1 if q["streak"] >= 2 else (-1 if q["log"] and not q["log"][-1][1] else 0)
     target = max(1, min(5, q["band"] + shift))
     best = min(range(len(pool)), key=lambda k: (abs(to_int(pool[k]["difficulty"], 1) - target), random.random()))
     q["qs"].append(pool.pop(best))
+
+
+def quest_base_xp(sheet_xp) -> int:
+    """Base XP per correct answer: the sheet value scaled down and kept in the 5-10 range."""
+    return max(Q_XP_MIN, min(Q_XP_MAX, round(to_int(sheet_xp, 10) * Q_XP_SCALE)))
 
 
 def answer(letter: str):
@@ -1458,7 +1852,7 @@ def answer(letter: str):
     q["log"].append((cur["id"], ok))
     if ok:
         rate = {"practice": PRACTICE_RATE, "review": REVIEW_RATE}.get(q["mode"], 1)
-        base = to_int(cur["xp"], 10)
+        base = quest_base_xp(cur["xp"])
         base = max(1, round(base * rate)) if rate != 1 else base
         q["streak"] += 1
         q["wrong_streak"] = 0
@@ -1477,7 +1871,7 @@ def answer(letter: str):
                 q["pu"][kind] += 1
                 q["pu_earned"].append(kind)
                 q["last"]["earned"] = kind
-        sfx("combo" if q["streak"] >= 3 else "correct")
+        sfx("wall_break" if q["mode"] == "attack" else ("combo" if q["streak"] >= 3 else "correct"))
     else:
         q["streak"] = 0
         q["wrong_streak"] = min(3, q["wrong_streak"] + 1)
@@ -1505,7 +1899,7 @@ def next_question():
     q["i"] += 1
     q["picked"] = None
     q["started"] = time.time()
-    q["limit"] = TIME_LIMIT
+    q["limit"] = q.get("base_limit", TIME_LIMIT)
     q["hidden"], q["used"] = [], []
     if q["i"] < q["n"]:
         pick_next(q)
@@ -1645,12 +2039,18 @@ def quest_play(q: dict):
     n, cur = q["n"], q["qs"][q["i"]]
     combo = f'<span class="combo">🔥 Combo x{q["streak"]}</span>' if q["streak"] >= 2 else ""
     stars = "⭐" * max(1, min(5, to_int(cur["difficulty"], 1)))
-    tag = {"practice": " · Practice", "review": " · Review", "assign": " · Assigned"}.get(q["mode"], "")
+    tag = {"practice": " · Practice", "review": " · Review", "assign": " · Assigned",
+           "attack": " · Attack"}.get(q["mode"], "")
+    tag = tag or {"challenge": " · Duel"}.get(q["mode"], "")
+    unit = "Wall" if q["mode"] == "attack" else "Question"
+    walls_html = (battle_stage_html(q) if q["mode"] == "attack"
+                  else (duel_banner_html(q) if q["mode"] == "challenge" else ""))
     ui(f'''
     <div class="glass question-card">
       <div class="bar"><i style="width:{q["i"] / n * 100:.0f}%"></i></div>
+      {walls_html}
       <div class="q-meta">
-        <small>Question {q["i"] + 1} of {n} · {stars}{tag}</small>
+        <small>{unit} {q["i"] + 1} of {n} · {stars}{tag}</small>
         {combo}
       </div>
       <h2 class="question">{esc(cur["question"])}</h2>
@@ -1662,12 +2062,13 @@ def quest_play(q: dict):
         components.html(
             TIMER_HTML.replace("__LEFT__", f"{max(0.0, q['limit'] - elapsed):.1f}")
             .replace("__TOTAL__", str(q["limit"])), height=78)
-        with st.container(key="pu"):
-            for kind, (icon, label, tip) in POWERUPS.items():
-                have = q["pu"].get(kind, 0)
-                st.button(f"{icon} {label} ×{have}", key=f"pu_{kind}", help=tip,
-                          disabled=(have <= 0 or kind in q["used"]),
-                          on_click=use_powerup, args=(kind,))
+        if q["mode"] not in ("attack", "challenge"):   # no power-ups in battles and duels
+            with st.container(key="pu"):
+                for kind, (icon, label, tip) in POWERUPS.items():
+                    have = q["pu"].get(kind, 0)
+                    st.button(f"{icon} {label} ×{have}", key=f"pu_{kind}", help=tip,
+                              disabled=(have <= 0 or kind in q["used"]),
+                              on_click=use_powerup, args=(kind,))
         with st.container(key="opts"):
             for L in LETTERS:
                 if L in q["hidden"]:
@@ -1697,6 +2098,12 @@ def quest_play(q: dict):
         msg, cls = f"⏰ Time's up! Answer: {correct} · −{last.get('penalty', 1)} XP", "no"
     else:
         msg, cls = f"❌ Not quite. Answer: {correct} · −{last.get('penalty', 1)} XP", "no"
+    if q["mode"] in ("attack", "challenge"):
+        if last.get("ok"):
+            msg = "💥 Wall broken!" if q["mode"] == "attack" else "✅ Correct!"
+        else:
+            msg = (f"⏰ Time's up! Answer: {correct}" if last.get("timeout") else f"❌ Not quite. Answer: {correct}")
+            msg += " · 🛡️ The wall held" if q["mode"] == "attack" else ""
     expl = (cur.get("explanation") or "").strip()
     expl_html = f'<div class="expl"><b>💡 Why?</b> {esc_nl(expl)}</div>' if expl else ""
     ui(f'<div class="opts">{opts}</div><div class="toast {cls}">{msg}</div>{expl_html}')
@@ -1720,7 +2127,7 @@ def page_quests():
         st.button("Back to Arena", key="empty_back", on_click=leave_quest)
         return
     if q["i"] >= q["n"]:
-        return quest_result(q)
+        return battle_result(q) if q["mode"] in ("attack", "challenge") else quest_result(q)
     quest_play(q)
 
 
@@ -1759,6 +2166,12 @@ def page_leagues():
             f'{left}</div>'
         )
     ui('<div class="glass league-list">' + "".join(items) + "</div>")
+    try:
+        hof_html = hall_of_fame_html()
+        if hof_html:
+            ui(hof_html)
+    except Exception as e:
+        log.warning("hall of fame failed: %s", type(e).__name__)
     st.button("← Back to Arena", key="lg_back", on_click=go, args=("home",))
 
 
@@ -1774,42 +2187,33 @@ def page_profile():
     unlocked = set(all_badges(row.get("achievements", "")))
     cls = (row.get("class") or "").strip()
     cls_chip = f'<span class="chip chip-class">🏫 {esc(cls)}</span>' if cls else ""
+    if to_int(row.get("internal_xp")):
+        cls_chip += f'<span class="chip chip-prestige">⭐ Prestige {to_int(row.get("internal_xp"))}</span>'
 
     ui(f'''
     <div class="glass hero profile-card">
-      {avatar(me["username"], name, fam, "big")}
-      <h2>{esc(name)}</h2>
-      <p class="tier">{label} · {xp:,} XP</p>
-      {cls_chip}
+      {nest_scene_html(row)}
       <div class="bio-box">{esc_nl(bio) if bio else "<i>No bio yet</i>"}</div>
     </div>
     ''')
 
     tab = st.radio(
         "Profile menu",
-        ["Achievements", "Edit profile", "Change password"],
+        ["Achievements", "Battle record", "Edit profile", "Change password"],
         horizontal=True,
         label_visibility="collapsed",
         key="profile_menu",
     )
 
     if tab == "Achievements":
-        unlocked_html, locked_html = "", ""
-        for aname, how, _ in sorted(ACHIEVEMENTS, key=lambda x: -x[2]):
-            cell = (f'<div class="ach-row {"on" if aname in unlocked else "off"}">'
-                    f'<span class="ach-name">{esc(aname)}</span><span class="ach-how">{esc(how)}</span></div>')
-            if aname in unlocked:
-                unlocked_html += cell
-            else:
-                locked_html += cell
-        ui(f'''
-        <div class="glass">
-          <h3>✅ Unlocked ({len(unlocked)})</h3>
-          {unlocked_html or "<p>None yet — play a quest!</p>"}
-          <h3 style="margin-top:1rem">🔒 Locked</h3>
-          {locked_html}
-        </div>
-        ''')
+        render_achievements(row)
+        old = [b for b in all_badges(row.get("achievements", "")) if b not in unlocked_tiers(row)]
+        if old:
+            ui('<div class="glass"><h3>🏛️ Founder badges</h3><div class="chips">'
+               + "".join(f'<span class="chip">{esc(b)}</span>' for b in old) + '</div></div>')
+
+    elif tab == "Battle record":
+        render_battle_record(row)
 
     elif tab == "Edit profile":
         with st.form("edit_profile"):
@@ -1962,7 +2366,10 @@ def submit_story(p: dict, diff: str, text: str):
             raise NoInk()
         writings = to_int(cur.get("writings_done")) + 1
         old_xp = to_int(cur.get("xp"))
-        new_xp = old_xp + result["xp"]
+        last_w = parse_ts(cur.get("last_writing_at"))
+        first_bonus = FIRST_STORY_BONUS if (last_w is None or last_w.astimezone(TZ).date() != now.date()) else 0
+        out["first_bonus"] = first_bonus
+        new_xp = old_xp + result["xp"] + first_bonus
         ach = compute_achievements(cur, {
             "total": new_xp, "streak": to_int(cur.get("streak")),
             "writings_done": writings, "first_story": True, "hard_writing": diff == "hard",
@@ -1977,6 +2384,7 @@ def submit_story(p: dict, diff: str, text: str):
             "last_ink_grant": (now if c >= MAX_INK else anchor).isoformat(timespec="seconds"),
             "last_writing_at": now.isoformat(timespec="seconds"),
             "writings_done": writings, "xp": new_xp,
+            "hard_writings": to_int(cur.get("hard_writings")) + (1 if diff == "hard" else 0),
             "badges": LEAGUES[league_of(new_xp)][1],
             "achievements": ", ".join(sorted(ach)),
             "written_prompts": ",".join(prev),
@@ -2002,7 +2410,8 @@ def submit_story(p: dict, diff: str, text: str):
         log.warning("writing log failed: %s", type(e).__name__)
     me["xp"] = out["new_xp"]
     st.session_state.story = {
-        "phase": "result", "xp": result["xp"], "score": result["score"],
+        "phase": "result", "xp": result["xp"] + out.get("first_bonus", 0), "first_bonus": out.get("first_bonus", 0),
+        "score": result["score"],
         "original": text, "corrected": result["corrected"], "praise": result["praise"],
         "tips": result["tips"], "status": result["status"],
         "leveled": league_of(out["new_xp"]) > league_of(out["old_xp"]),
@@ -2057,6 +2466,7 @@ def story_result(story: dict):
         <div class="stat"><b>{score_txt}</b><span>Score / 10</span></div>
       </div>
       <p>{"⭐ " if checked else "⏳ "}{esc(story.get("praise", ""))}</p>
+      {f'<div class="ink-banner">🌅 First story of the day: +{story.get("first_bonus")} XP included!</div>' if story.get("first_bonus") else ""}
     </div>
     ''')
     if tips:
@@ -2099,11 +2509,12 @@ def page_teacher():
         st.rerun()
     ui('<div class="glass hero"><h2>🧑‍🏫 Teacher Tools</h2>'
        '<p class="tagline">Review writing · track progress · manage content</p></div>')
-    tab = st.radio("Teacher menu", ["Review", "Dashboard", "Content", "Class tools"],
+    tab = st.radio("Teacher menu", ["Review", "Dashboard", "Content", "Class tools", "Grants"],
                    horizontal=True, label_visibility="collapsed", key="teacher_menu")
     try:
         {"Review": teacher_review, "Dashboard": teacher_dashboard,
-         "Content": teacher_content, "Class tools": teacher_class_tools}[tab]()
+         "Content": teacher_content, "Class tools": teacher_class_and_battle,
+         "Grants": teacher_grants}[tab]()
     except Exception as e:
         st.error(friendly_error(e, f"teacher {tab}"))
     st.button("← Back to Arena", key="teach_back", on_click=go, args=("home",))
@@ -2151,8 +2562,10 @@ def teacher_review():
                     st.rerun()
             with st.form(f"rv_form_{rid}"):
                 comment = st.text_input("Comment for the student", value=r["teacher_comment"], max_chars=300)
-                bonus = st.number_input("Bonus XP", min_value=0, max_value=100,
-                                        value=min(100, to_int(r["bonus_xp"])), step=5)
+                bonus_cap = max(0, WRITE_CAP.get(r["difficulty"], 150) - to_int(r["xp"]))
+                bonus = st.number_input(f"Bonus XP (essay cap {WRITE_CAP.get(r['difficulty'], 150)})",
+                                        min_value=0, max_value=bonus_cap,
+                                        value=min(bonus_cap, to_int(r["bonus_xp"])), step=5)
                 if st.form_submit_button("💾 Save review"):
                     delta = int(bonus) - to_int(r["bonus_xp"])
                     update_row("writing_log", rid, {"status": "reviewed",
@@ -2187,11 +2600,11 @@ def teacher_dashboard():
         "Last played": board["last_played"],
     })
     st.dataframe(view, hide_index=True)
-    scores, _ = class_scores(board)
+    scores, _ = class_scores(board, war_points())
     if scores:
-        st.dataframe(pd.DataFrame(scores)[["name", "players", "xp", "bonus", "score"]]
+        st.dataframe(pd.DataFrame(scores)[["name", "players", "xp", "bonus", "war", "score"]]
                      .rename(columns={"name": "Class", "players": "Players", "xp": "XP",
-                                      "bonus": "Bonus", "score": "Score"}), hide_index=True)
+                                      "bonus": "Bonus", "war": "War", "score": "Score"}), hide_index=True)
     if not prog.empty:
         qs = read_tab("questions").set_index("id")["question"].to_dict()
         g = prog.assign(ok=prog["correct"].str.upper() == "TRUE").groupby("question_id")["ok"].agg(["mean", "count"])
@@ -2310,6 +2723,1595 @@ def teacher_class_tools():
         st.rerun()
 
 
+# ===================================================================== SEASONS
+def season_key(now=None) -> str:
+    return (now or datetime.now(TZ)).strftime("%Y-%m")
+
+
+def days_left_in_season() -> int:
+    t = datetime.now(TZ).date()
+    nxt = date(t.year + (t.month == 12), t.month % 12 + 1, 1)
+    return (nxt - t).days
+
+
+def prestige_info(row: dict) -> dict:
+    """Internal XP = permanent Prestige. Season XP is banked at the monthly reset."""
+    pot = to_int(row.get("banked_xp")) + to_int(row.get("xp"))
+    return {"level": to_int(row.get("internal_xp")), "pending": pot // XP_PER_PRESTIGE,
+            "progress": pot % XP_PER_PRESTIGE}
+
+
+def _run_season_reset(ended: str, new_key: str, force: bool = False) -> None:
+    """Pay season rewards, save the Hall of Fame, bank XP into Prestige, reset XP + leagues."""
+    df = read_tab("users", force=True, strict=True)
+    stu = df[(df["username"].str.strip() != "")
+             & ~df["role"].str.strip().str.lower().isin(TEACHER_ROLES)].copy()
+    stu["_xp"] = stu["xp"].map(to_int)
+    stu = stu.sort_values("_xp", ascending=False, kind="stable")
+    changes, hof = {}, []
+    for pos, (_, r) in enumerate(stu.iterrows(), start=1):
+        xp = int(r["_xp"])
+        lg = league_of(xp)
+        eggs = 0
+        if xp > 0:
+            eggs += SEASON_TOP_EGGS[pos - 1] if pos <= len(SEASON_TOP_EGGS) else 0
+            eggs += lg // SEASON_LEAGUE_DIV
+        banked = to_int(r["banked_xp"]) + xp
+        gain = banked // XP_PER_PRESTIGE
+        changes[int(r["_row"])] = {
+            "xp": 0, "badges": LEAGUES[0][1], "answered": "", "last_rank": "",
+            "owl_eggs": to_int(r["owl_eggs"]) + eggs,
+            "internal_xp": to_int(r["internal_xp"]) + gain,
+            "banked_xp": banked % XP_PER_PRESTIGE, "season": new_key,
+        }
+        if OWL_XP_RESETS_MONTHLY:
+            changes[int(r["_row"])]["owl_xp"] = 0
+        hof.append({"season": ended, "rank": pos, "username": r["username"],
+                    "display_name": r["display_name"] or r["username"], "class": r["class"].strip(),
+                    "xp": xp, "league": LEAGUES[lg][1], "eggs": eggs, "prestige_gain": gain})
+    today = datetime.now(TZ).date().isoformat()
+    if changes:
+        old = read_tab("hall_of_fame", force=True)
+        if force or old[old["season"] == ended].empty:       # skip if a half-finished reset already saved it
+            append_rows_tab("hall_of_fame", hof)             # history first, so it is never lost
+        bulk_update("users", changes)
+    set_setting("season", new_key)
+    set_setting("season_last", ended)
+    set_setting("season_reset_on", today)
+    set_setting("rank_snapshot", today)
+    _store()["snap_day"] = today
+
+
+def maybe_season_reset(force: bool = False) -> bool:
+    """Lazy monthly reset: the first visit in a new month triggers it (no cron job needed).
+    SAFE START: on a sheet that has never recorded a season, it only records this month."""
+    st_ = _store()
+    key = season_key()
+    if not force and (st_.get("season_ok") == key or time.time() < st_.get("season_retry", 0)):
+        return False
+    with st_["lock"]:
+        try:
+            read_tab("settings", force=True, strict=True)
+            stored = get_setting("season").strip()
+            if not force and stored == key:
+                st_["season_ok"] = key
+                return False
+            if not force and not stored:
+                set_setting("season", key)
+                st_["season_ok"] = key
+                return False
+            _run_season_reset(stored or key, key, force)
+            st_["season_ok"] = key
+            return True
+        except Exception as e:
+            st_["season_retry"] = time.time() + 60
+            log.error("season reset failed: %s: %s", type(e).__name__, e)
+            if force:
+                raise
+            return False
+
+
+def new_season_card(me: dict) -> None:
+    """After a reset, show last season's result for a few days (until the player taps the button)."""
+    if st.session_state.get("ns_hidden"):
+        return
+    try:
+        on = date.fromisoformat(get_setting("season_reset_on").strip())
+    except ValueError:
+        return
+    if (datetime.now(TZ).date() - on).days > 3:
+        return
+    last = get_setting("season_last").strip()
+    hof = read_tab("hall_of_fame")
+    mine = hof[(hof["season"] == last) & (hof["username"].str.lower() == me["username"].lower())]
+    if mine.empty:
+        return
+    r = mine.iloc[-1]
+    ui(f'''
+    <div class="glass hero celebrate">
+      {anim("season_new", "🎆")}
+      <h2>New season!</h2>
+      <p class="tagline">{esc(last)}: you finished #{esc(r["rank"])} in {esc(r["league"])} with {to_int(r["xp"]):,} XP</p>
+      <div class="bonus"><div>🥚 +{to_int(r["eggs"])} Owl Eggs</div><div>⭐ +{to_int(r["prestige_gain"])} Prestige</div>
+      <div>Everyone starts again from Bronze I. Good luck!</div></div>
+    </div>
+    ''')
+
+    def hide():
+        st.session_state.ns_hidden = True
+
+    st.button("🚀 Let's go!", key="ns_close", on_click=hide)
+
+
+def hall_of_fame_html() -> str:
+    last = get_setting("season_last").strip()
+    if not last:
+        return ""
+    hof = read_tab("hall_of_fame")
+    top = hof[hof["season"] == last]
+    if top.empty:
+        return ""
+    top = top.assign(_r=top["rank"].map(to_int)).sort_values("_r").head(3)
+    rows = "".join(
+        f'<div class="hof-row">{MEDALS[i]} <b>{esc(r["display_name"])}</b>'
+        f'<small>{esc(r["class"])}</small><span>{to_int(r["xp"]):,} XP</span></div>'
+        for i, (_, r) in enumerate(top.iterrows()))
+    return f'<div class="glass"><h3>🏛️ Hall of Fame · {esc(last)}</h3>{rows}</div>'
+
+
+# ===================================================================== BATTLES (Clash of Nests)
+class BattleError(Exception):
+    pass
+
+
+class ShopError(Exception):
+    pass
+
+
+def attacks_enabled() -> bool:
+    try:
+        return get_setting("attacks_enabled").strip().upper() != "FALSE"
+    except Exception:
+        return True
+
+
+# ---- XP / levels
+def lifetime_xp(row) -> int:
+    """Academic XP over all seasons (Prestige x 1000 + banked + this season). Used for nest unlocks."""
+    return (to_int(row.get("internal_xp")) * XP_PER_PRESTIGE + to_int(row.get("banked_xp"))
+            + to_int(row.get("xp")))
+
+
+def owl_xp_of(row) -> int:
+    return max(0, to_int(row.get("owl_xp")))
+
+
+def battle_league(owl: int) -> int:
+    idx = 0
+    for i, (need, _, _) in enumerate(BATTLE_LEAGUES):
+        if owl >= need:
+            idx = i
+    return idx
+
+
+def battle_floor(owl: int) -> int:
+    return BATTLE_LEAGUES[battle_league(owl)][0]
+
+
+def bld_level(row, key: str) -> int:
+    low = 1 if key == "nest" else 0
+    return max(low, min(BLD_MAX[key], to_int(row.get(BLD_COL[key]), low)))
+
+
+def nest_level(row) -> int:
+    return bld_level(row, "nest")
+
+
+def walls_for(row) -> int:
+    return WALLS_BASE + nest_level(row) + TOWER_WALLS[bld_level(row, "tower")]
+
+
+def need_for(walls: int) -> int:
+    return max(1, math.ceil(walls * NEED_RATIO))
+
+
+def stars_for(broken: int, walls: int, need: int) -> int:
+    if broken < need:
+        return 0
+    if broken >= walls:
+        return 3
+    return 2 if broken >= math.ceil(walls * 0.8) else 1
+
+
+def hit_shield_hours(row) -> int:
+    return SHIELD_AFTER_HIT_H + VAULT_SHIELD_BONUS[bld_level(row, "vault")]
+
+
+def arrow_state(row):
+    now = datetime.now(TZ)
+    n, anchor = regen_calc(row, "arrows", "last_arrow_grant", ARROW_MAX, ARROW_REGEN, ARROW_MAX, now)
+    return n, (None if n >= ARROW_MAX else max(timedelta(0), anchor + ARROW_REGEN - now))
+
+
+def shield_left(row, now=None) -> timedelta:
+    now = now or datetime.now(TZ)
+    ts = parse_ts(row.get("shield_until"))
+    return max(timedelta(0), ts - now) if ts else timedelta(0)
+
+
+def owl_loot(def_owl: int, revenge: bool = False) -> int:
+    loot = max(OWL_LOOT_MIN, min(OWL_LOOT_MAX, round(def_owl * OWL_LOOT_PCT)))
+    if revenge:
+        loot = round(loot * REVENGE_MULT)
+    return max(0, min(loot, def_owl - battle_floor(def_owl)))      # never drops a battle league
+
+
+def owl_win_bonus(my_owl: int, def_owl: int, perfect: bool = False) -> int:
+    gap = max(0, battle_league(def_owl) - battle_league(my_owl))
+    return (OWL_WIN_BONUS + min(OWL_UNDERDOG_MAX, gap * OWL_UNDERDOG_STEP)
+            + (OWL_PERFECT_BONUS if perfect else 0))
+
+
+def owl_fail_loss(my_owl: int, def_owl: int) -> int:
+    gap = max(0, battle_league(my_owl) - battle_league(def_owl))
+    loss = min(OWL_FAIL_MAX, OWL_FAIL_BASE + gap * OWL_FAIL_STEP)
+    return max(0, min(loss, my_owl - battle_floor(my_owl)))
+
+
+def battle_title(owl: int) -> str:
+    return BATTLE_LEAGUES[battle_league(owl)][1]
+
+
+def battle_icon(i: int, size_cls="bl-ico") -> str:
+    _, name, emoji = BATTLE_LEAGUES[i]
+    return art(f"bl_{name.lower()}", emoji, f"art {size_cls}")
+
+
+# ---- cosmetics rendering
+def styled_name(name: str, glow: str = "") -> str:
+    cls = f" glow-{glow}" if glow in GLOWS else ""
+    return f'<span class="nm{cls}">{esc(name)}</span>'
+
+
+def title_tag(title: str) -> str:
+    return f'<span class="title-tag">{esc(TITLES[title][0])}</span>' if title in TITLES else ""
+
+
+def banner_style(banner: str) -> str:
+    if banner not in BANNERS:
+        return ""
+    src = pic(IMG_DIR / "banners", f"banner_{banner}", 720, (".png", ".webp", ".jpg", ".jpeg"))
+    return f"background-image:linear-gradient(rgba(10,0,40,.35),rgba(10,0,40,.35)),url({src});" if src else ""
+
+
+def party(row: dict) -> dict:
+    return {"username": row.get("username", ""), "name": row.get("display_name") or row.get("username", ""),
+            "fam": LEAGUES[league_of(to_int(row.get("xp")))][2], "frame": row.get("frame", ""),
+            "nest": nest_level(row)}
+
+
+def nest_scene_html(row: dict, compact: bool = False) -> str:
+    """Player banner + avatar + nest + buildings. Used on Home, Nest Hub, Profile, Shop preview, Visit Base."""
+    uname = (row.get("username") or "").strip()
+    name = row.get("display_name") or uname
+    xp = to_int(row.get("xp"))
+    li = league_of(xp)
+    _, label, fam, _ = LEAGUES[li]
+    banner = row.get("banner", "")
+    bl = battle_league(owl_xp_of(row))
+    chips = ""
+    cls = (row.get("class") or "").strip()
+    if cls:
+        chips += f'<span class="chip chip-class">🏫 {esc(cls)}</span>'
+    if to_int(row.get("internal_xp")):
+        chips += f'<span class="chip chip-prestige">⭐ Prestige {to_int(row.get("internal_xp"))}</span>'
+    chips += f'<span class="chip chip-owl">{BATTLE_LEAGUES[bl][2]} {BATTLE_LEAGUES[bl][1]}</span>'
+    head = (
+        f'<div class="scene-top pc-head">'
+        f'{avatar(uname, name, fam, "pc", row.get("frame", ""))}'
+        f'<div class="scene-mid"><div class="scene-name">{styled_name(name, row.get("name_glow", ""))}</div>'
+        f'{title_tag(row.get("title", ""))}'
+        f'<p class="tier">{label} · {xp:,} XP</p><div class="chips">{chips}</div></div>'
+        f'{league_icon(li, 96, "lg-ico pc")}</div>'
+    )
+    bclass = f" banner-{banner}" if banner in BANNERS else ""
+    wrap = f'<div class="scene{bclass} lg-{fam}" style="{banner_style(banner)}">'
+    if compact:
+        return wrap + head + "</div>"
+    nl = nest_level(row)
+    tiles = ""
+    for key in ("hatchery", "vault", "tower"):
+        lvl = bld_level(row, key)
+        icon, short, _ = BLD_INFO[key]
+        tiles += (f'<div class="bld{"" if lvl else " off"}">{art("bld_" + key, icon, "art bld-art")}'
+                  f'<small>{esc(short)}<br>{"Lv." + str(lvl) if lvl else "🔒 not built"}</small></div>')
+    body = (f'<div class="scene-nest">{art("nest_" + str(nl), "🪺", "art nest-art")}'
+            f'<small>🪺 Owl Nest Lv.{nl}</small></div><div class="bld-row">{tiles}</div>')
+    return wrap + head + body + "</div>"
+
+
+# ---- battle stage (face-to-face, wall by wall)
+STAGE_STATES = [("intact", "🏰", "🏰 Fortress Active"), ("cracked", "🧱", "🧱 Wall Breach"),
+                ("ruined", "🔥", "🔥 Base Crumbling"), ("wiped", "👑", "👑 Base Looted!")]
+
+
+def stage_state(n: int, broken: int):
+    pct = round((n - broken) / max(1, n) * 100)
+    i = 0 if pct >= 75 else (1 if pct >= 50 else (2 if pct > 0 else 3))
+    return STAGE_STATES[i], pct
+
+
+def battle_stage_html(q: dict) -> str:
+    (key, emoji, label), pct = stage_state(q["n"], q["correct"])
+    a, d = q["atk"], q["def"]
+    return (
+        f'<div class="stage st-{key}">'
+        f'<div class="stage-side"><div class="stage-av">{avatar(a["username"], a["name"], a["fam"], "", a["frame"])}</div>'
+        f'{art("nest_" + str(a["nest"]), "🪺", "art stage-art")}<b>{esc(a["name"][:12])}</b></div>'
+        f'<div class="stage-vs">⚔️</div>'
+        f'<div class="stage-side def"><div class="stage-av">{avatar(d["username"], d["name"], d["fam"], "", d["frame"])}</div>'
+        f'{art("fortress_" + key, emoji, "art stage-art fort")}<b>{esc(d["name"][:12])}</b></div></div>'
+        f'<div class="stage-hp"><i style="width:{pct}%"></i></div>'
+        f'<div class="stage-label">{label} · {pct}% standing</div>'
+        f'<div class="wall-need">Break {q["need"]} of {q["n"]} walls to win</div>'
+    )
+
+
+def duel_banner_html(q: dict) -> str:
+    d = q["duel"]
+    who = esc(d["target_name"])
+    if d["role"] == "challenger":
+        line = f'🤝 Duel vs <b>{who}</b> · score {d["target"]}/{q["n"]} to send your challenge'
+    else:
+        line = f'🤝 Duel vs <b>{who}</b> · you need {d["target"]}/{q["n"]} to win'
+    return f'<div class="duel-banner">{line}</div>'
+
+
+# ---- battle log helpers
+def defender_loss_today(log_df, uname: str) -> int:
+    today = datetime.now(TZ).date().isoformat()
+    sub = log_df[(log_df["defender"].str.lower() == uname.lower()) & (log_df["result"] == "win")
+                 & (log_df["time"].str.startswith(today))]
+    return int(sum(to_int(v) for v in sub["loot"]))
+
+
+def my_last_attacks(log_df, uname: str) -> dict:
+    out = {}
+    sub = log_df[log_df["attacker"].str.lower() == uname.lower()].tail(300)
+    for _, r in sub.iterrows():
+        ts = parse_ts(r["time"])
+        if ts:
+            key = r["defender"].strip().lower()
+            out[key] = max(out.get(key, ts), ts)
+    return out
+
+
+def revenge_ready(username: str, now=None) -> list:
+    now = now or datetime.now(TZ)
+    try:
+        log_df = read_tab("battles")
+    except Exception:
+        return []
+    sub = log_df[(log_df["defender"].str.lower() == username.lower()) & (log_df["result"] == "win")
+                 & (log_df["revenge_used"].str.strip() == "")].tail(30)
+    out = []
+    for _, r in sub.iterrows():
+        ts = parse_ts(r["time"])
+        if ts and now - ts <= REVENGE_WINDOW:
+            out.append(r.to_dict())
+    return out
+
+
+def attack_block_reason(mine: dict, target: dict, log_df, now, revenge=False, last=None,
+                        need_arrow=True) -> str:
+    """'' when the attack is allowed, else a short kid-friendly reason."""
+    if not attacks_enabled():
+        return "⏸️ Attacks paused"
+    left = shield_left(target, now)
+    if left > timedelta(0):
+        return f"🛡️ Shielded {fmt_td(left)}"
+    if not revenge:
+        if last is None:
+            last = my_last_attacks(log_df, mine.get("username", ""))
+        ts = last.get(str(target.get("username", "")).strip().lower())
+        if ts and now - ts < TARGET_COOLDOWN:
+            return f"⏳ Rest {fmt_td(TARGET_COOLDOWN - (now - ts))}"
+        if need_arrow and arrow_state(mine)[0] <= 0:
+            return "🏹 No arrows"
+    return ""
+
+
+def eligible_targets(mine: dict, log_df, now) -> list:
+    last = my_last_attacks(log_df, mine.get("username", ""))
+    out = []
+    for _, t in users_df().iterrows():
+        t = t.to_dict()
+        u = t["username"].strip()
+        if u.lower() == mine.get("username", "").strip().lower() or is_teacher(t):
+            continue
+        if not attack_block_reason(mine, t, log_df, now, False, last, need_arrow=False):
+            out.append(u)
+    return out
+
+
+def war_points() -> dict:
+    """Class Battle points from cross-house attacks this season."""
+    out = {}
+    try:
+        log_df = read_tab("battles")
+    except Exception:
+        return out
+    prefix = season_key()
+    for _, r in log_df.iterrows():
+        if not str(r["time"]).startswith(prefix):
+            continue
+        a, d = r["a_class"].strip(), r["d_class"].strip()
+        if not a or not d or a.lower() == d.lower():
+            continue
+        if r["result"] == "win":
+            out[a] = out.get(a, 0) + WAR_WIN
+        else:
+            out[d] = out.get(d, 0) + WAR_DEFEND
+    return out
+
+
+# ---- opponent search: ONE arrow per search, "Next" is free
+def begin_search() -> None:
+    me = st.session_state.user
+    try:
+        now = datetime.now(TZ)
+        mine = user_row(me["username"])
+        if not attacks_enabled():
+            raise BattleError("⏸️ Attacks are paused by your teacher.")
+        log_df = read_tab("battles", force=True)
+        cands = eligible_targets(mine, log_df, now)
+        if not cands:
+            raise BattleError("😴 Nobody can be attacked right now (everyone is shielded or resting). Try later.")
+
+        def pay(cur):
+            n, anchor = regen_calc(cur, "arrows", "last_arrow_grant", ARROW_MAX, ARROW_REGEN, ARROW_MAX, now)
+            if n <= 0:
+                raise BattleError("You have no arrows left.")
+            return {"arrows": n - 1,
+                    "last_arrow_grant": (now if n >= ARROW_MAX else anchor).isoformat(timespec="seconds")}
+
+        modify_user(me["username"], pay)
+        random.shuffle(cands)
+        st.session_state.search = {"cands": cands, "i": 0}
+    except BattleError as e:
+        st.session_state.flash = str(e)
+    except Exception as e:
+        st.session_state.flash = friendly_error(e, "find opponent")
+
+
+def search_next() -> None:
+    s = st.session_state.get("search")
+    if s:
+        s["i"] = (s["i"] + 1) % len(s["cands"])      # free: wraps around, never costs anything
+
+
+def end_search() -> None:
+    st.session_state.search = None
+
+
+# ---- starting an attack
+def start_attack(target_username: str, revenge_id: str = "", paid: bool = False) -> None:
+    me = st.session_state.user
+    try:
+        now = datetime.now(TZ)
+        mine, target = user_row(me["username"]), user_row(target_username)
+        if (not target or is_teacher(target)
+                or target["username"].strip().lower() == me["username"].strip().lower()):
+            raise BattleError("That player can't be attacked.")
+        log_df = read_tab("battles", force=True)
+        revenge = bool(revenge_id)
+        if revenge:
+            ok_ids = {r["id"] for r in revenge_ready(me["username"], now)
+                      if r["attacker"].strip().lower() == target_username.strip().lower()}
+            if revenge_id not in ok_ids:
+                raise BattleError("This revenge is not available any more.")
+        why = attack_block_reason(mine, target, log_df, now, revenge, need_arrow=not (revenge or paid))
+        if why:
+            raise BattleError(why)
+        qs = read_tab("questions")
+        active = qs[qs["active"].map(is_true)].copy()
+        walls = min(walls_for(target), len(active))
+        if walls < 3:
+            raise BattleError("Not enough questions yet. Ask your teacher to add more.")
+        band = adaptive_band(target)
+        active["gap"] = active["difficulty"].map(lambda v: to_int(v, 1)).sub(band).abs()
+        active["rnd"] = [random.random() for _ in range(len(active))]
+        pick = active.sort_values(["gap", "rnd"]).head(walls)
+        pick = pick.assign(_d=pick["difficulty"].map(lambda v: to_int(v, 1))).sort_values("_d", kind="stable")
+        pool = pick.drop(columns=["gap", "rnd", "_d"]).to_dict("records")
+        if not (revenge or paid):                     # pay the arrow first, atomically
+            def pay(cur):
+                n, anchor = regen_calc(cur, "arrows", "last_arrow_grant", ARROW_MAX, ARROW_REGEN,
+                                       ARROW_MAX, now)
+                if n <= 0:
+                    raise BattleError("You have no arrows left.")
+                return {"arrows": n - 1,
+                        "last_arrow_grant": (now if n >= ARROW_MAX else anchor).isoformat(timespec="seconds")}
+            modify_user(me["username"], pay)
+        q = new_quest_dict("attack", pool, ATTACK_TIME)
+        q.update({
+            "target": target["username"], "target_name": target.get("display_name") or target["username"],
+            "need": need_for(len(pool)), "revenge_id": revenge_id, "result": None,
+            "atk": party(mine), "def": party(target),
+        })
+        pick_next(q)
+        st.session_state.quest = q
+        st.session_state.search = None
+        st.session_state.page = "quests"
+        sfx("clash")
+    except BattleError as e:
+        st.session_state.flash = str(e)
+    except Exception as e:
+        st.session_state.flash = friendly_error(e, "start attack")
+
+
+def new_quest_dict(mode: str, pool: list, limit: int) -> dict:
+    return {
+        "mode": mode, "pool": pool, "qs": [], "n": len(pool), "i": 0, "started": time.time(),
+        "limit": limit, "base_limit": limit, "hidden": [], "used": [], "picked": None,
+        "gained": 0, "correct": 0, "streak": 0, "best": 0, "wrong_streak": 0, "log": [],
+        "saved": False, "last": None, "pu": {}, "pu_earned": [], "band": 1, "fixed": [],
+        "assign_id": "", "assign_bonus": 0,
+    }
+
+
+def attack_from_search() -> None:
+    s = st.session_state.get("search")
+    if s:
+        start_attack(s["cands"][s["i"] % len(s["cands"])], "", True)
+
+
+def open_revenge() -> None:
+    st.session_state.battle_menu = "📜 Log"
+    st.session_state.page = "battle"
+
+
+def open_duels() -> None:
+    st.session_state.battle_menu = "🤝 Duels"
+    st.session_state.page = "battle"
+
+
+# ---- finishing an attack
+def resolve_attack(me: dict, q: dict) -> dict:
+    a_name, d_name = me["username"], q["target"]
+    now = datetime.now(TZ)
+    walls, need, broken = q["n"], q["need"], q["correct"]
+    win = broken >= need
+    stars = stars_for(broken, walls, need)
+    revenge_id = q.get("revenge_id", "")
+    revenge = bool(revenge_id)
+    log_df = read_tab("battles", force=True)
+    a_before, d_before = user_row(a_name), user_row(d_name)
+    d_owl_before = owl_xp_of(d_before)
+    out = {"win": win, "loot": 0, "bonus": 0, "loss": 0, "egg": 0, "rare": 0, "streak": 0, "stars": stars,
+           "walls": walls, "broken": broken, "need": need, "revenge": revenge, "defender_gain": 0}
+
+    if win:
+        def d_fn(cur):
+            owl = owl_xp_of(cur)
+            cap_left = max(0, DEF_DAILY_CAP - defender_loss_today(log_df, d_name))
+            loot = min(owl_loot(owl, revenge), cap_left)
+            out["loot"] = loot
+            old = parse_ts(cur.get("shield_until")) or now
+            shield = max(now + timedelta(hours=hit_shield_hours(cur)), old)
+            return {"owl_xp": owl - loot, "shield_until": shield.isoformat(timespec="seconds")}
+        modify_user(d_name, d_fn)
+
+        def a_fn(cur):
+            owl = owl_xp_of(cur)
+            bonus = owl_win_bonus(owl, d_owl_before, broken == walls)
+            streak = to_int(cur.get("attack_streak")) + 1
+            egg = 1 if streak % 5 == 0 else 0
+            rare = random.randint(1, 3) if stars == 3 and random.random() < RARE_DROP_CHANCE else 0
+            out.update(bonus=bonus, egg=egg, rare=rare, streak=streak)
+            return {
+                "owl_xp": owl + out["loot"] + bonus,
+                "attacks_won": to_int(cur.get("attacks_won")) + 1, "attack_streak": streak,
+                "owl_eggs": to_int(cur.get("owl_eggs")) + egg + rare,
+                "total_looted": to_int(cur.get("total_looted")) + out["loot"],
+                "revenges_won": to_int(cur.get("revenges_won")) + (1 if revenge else 0),
+            }
+        arow = modify_user(a_name, a_fn)
+    else:
+        def a_fn(cur):
+            owl = owl_xp_of(cur)
+            loss = owl_fail_loss(owl, d_owl_before)
+            out["loss"] = loss
+            return {"owl_xp": owl - loss, "attack_streak": 0}
+        arow = modify_user(a_name, a_fn)
+
+        def d_fn(cur):
+            gain = out["loss"] + OWL_DEFEND_BONUS
+            out["defender_gain"] = gain
+            return {"owl_xp": owl_xp_of(cur) + gain, "defends_won": to_int(cur.get("defends_won")) + 1}
+        modify_user(d_name, d_fn)
+
+    out["new_owl"] = owl_xp_of(arow)
+    try:
+        append_row_tab("battles", {
+            "id": f"{now:%Y%m%d%H%M%S}{random.randint(100, 999)}",
+            "time": now.isoformat(timespec="seconds"), "attacker": a_name, "defender": d_name,
+            "a_class": (a_before.get("class") or "").strip(), "d_class": (d_before.get("class") or "").strip(),
+            "walls": walls, "broken": broken, "need": need, "result": "win" if win else "fail",
+            "loot": out["loot"], "attacker_loss": out["loss"], "bonus": out["bonus"],
+            "revenge_of": revenge_id, "revenge_used": "", "stars": stars, "rare_eggs": out["rare"],
+        })
+        if revenge:
+            m = log_df[log_df["id"] == revenge_id]
+            if not m.empty:
+                update_row("battles", int(m.iloc[0]["_row"]), {"revenge_used": "1"})
+    except Exception as e:
+        log.warning("battle log failed: %s", type(e).__name__)
+    return out
+
+
+def finalize_attack(q: dict) -> None:
+    res = resolve_attack(st.session_state.user, q)
+    q["result"], q["saved"] = res, True
+    if res["win"]:
+        sfx("victory")
+    else:
+        sfx("defeat")
+    if res["egg"] or res["rare"]:
+        sfx("egg_drop")
+
+
+def leave_attack() -> None:
+    st.session_state.quest = None
+    st.session_state.page = "battle"
+
+
+def attack_result(q: dict) -> None:
+    if not q["saved"]:
+        try:
+            finalize_attack(q)
+        except Exception as e:
+            st.error(friendly_error(e, "save attack"))
+            st.button("🔁 Retry save", key="retry_atk")
+            return
+    r = q["result"]
+    who = esc(q["target_name"])
+    stars = "⭐" * r["stars"] + "☆" * (3 - r["stars"])
+    if r["win"]:
+        lines = [f"🏴 Loot taken: +{r['loot']} Owl XP", f"🎖️ Victory bonus: +{r['bonus']} Owl XP"]
+        if r["egg"]:
+            lines.append("🥚 5-win streak reward: +1 Owl Egg!")
+        if r["rare"]:
+            lines.append(f"💎 RARE DROP! +{r['rare']} Owl Egg{'s' if r['rare'] != 1 else ''} from the raid!")
+        if r["revenge"]:
+            lines.append("😤 Revenge complete!")
+        title, art_html, total = f"{stars} Walls broken!", anim("attack_win", "🏆"), f'+{r["loot"] + r["bonus"]}'
+    else:
+        lines = [f"🛡️ {who} held the walls", f"You lost {r['loss']} Owl XP"]
+        title, art_html, total = "They held!", anim("attack_fail", "🛡️"), f'−{r["loss"]}'
+    body = "".join(f"<div>{ln}</div>" for ln in lines)
+    stage = battle_stage_html(q)
+    ui(f'''
+    <div class="glass hero celebrate">
+      {art_html}
+      <h2>{title}</h2>
+      {stage}
+      <div class="stats">
+        <div class="stat"><b>{total}</b><span>Owl XP</span></div>
+        <div class="stat"><b>{r["broken"]}/{r["walls"]}</b><span>Walls broken</span></div>
+        <div class="stat"><b>{r["new_owl"]}</b><span>Your Owl XP</span></div>
+      </div>
+      <div class="bonus">{body}</div>
+    </div>
+    ''')
+    st.button("🛡️ Back to Battle", key="atk_done", on_click=leave_attack)
+    st.button("🏆 Arena", key="finish", on_click=leave_quest)
+
+
+# ===================================================================== 1v1 DUELS
+def duel_status(r, now=None) -> str:
+    now = now or datetime.now(TZ)
+    st_ = (r["status"] or "").strip()
+    if st_ == "open":
+        ts = parse_ts(r["time"])
+        if ts and now - ts > DUEL_EXPIRE:
+            return "expired"
+    return st_
+
+
+def incoming_duels(username: str, now=None) -> list:
+    now = now or datetime.now(TZ)
+    try:
+        df = read_tab("challenges")
+    except Exception:
+        return []
+    sub = df[(df["defender"].str.lower() == username.lower())]
+    return [r.to_dict() for _, r in sub.iterrows() if duel_status(r, now) == "open"]
+
+
+def duel_pair_wait(df, a: str, b: str, now) -> timedelta:
+    """Time left before a and b may duel again (checks both directions)."""
+    a, b = a.strip().lower(), b.strip().lower()
+    best = timedelta(0)
+    for _, r in df.iterrows():
+        pair = {r["challenger"].strip().lower(), r["defender"].strip().lower()}
+        if pair == {a, b}:
+            ts = parse_ts(r["time"])
+            if ts and now - ts < DUEL_COOLDOWN:
+                best = max(best, DUEL_COOLDOWN - (now - ts))
+    return best
+
+
+def _duel_quest(role: str, ids: list, target_user: str, target_name: str, diff: int, tscore: int,
+                cid: str = "") -> dict:
+    qs = read_tab("questions").set_index("id", drop=False)
+    pool = [qs.loc[i].to_dict() for i in ids if i in qs.index]
+    q = new_quest_dict("challenge", pool, DUEL_TIME)
+    q["duel"] = {"role": role, "target_user": target_user, "target_name": target_name,
+                 "difficulty": diff, "target": tscore, "ids": ids, "cid": cid, "result": None}
+    pick_next(q)
+    return q
+
+
+def start_duel() -> None:
+    me = st.session_state.user
+    try:
+        now = datetime.now(TZ)
+        tuser = st.session_state.get("duel_target")
+        diff = int(st.session_state.get("duel_diff", 1))
+        tscore = int(st.session_state.get("duel_score", 4))
+        target = user_row(tuser or "")
+        if (not target or is_teacher(target)
+                or target["username"].strip().lower() == me["username"].strip().lower()):
+            raise BattleError("Pick a classmate to challenge.")
+        df = read_tab("challenges", force=True)
+        wait = duel_pair_wait(df, me["username"], target["username"], now)
+        if wait > timedelta(0):
+            raise BattleError(f"⏳ You two can duel again in {fmt_td(wait)}.")
+        qs = read_tab("questions")
+        active = qs[qs["active"].map(is_true)].copy()
+        if len(active) < DUEL_Q:
+            raise BattleError("Not enough questions yet. Ask your teacher to add more.")
+        active["gap"] = active["difficulty"].map(lambda v: to_int(v, 1)).sub(diff).abs()
+        active["rnd"] = [random.random() for _ in range(len(active))]
+        ids = list(active.sort_values(["gap", "rnd"]).head(DUEL_Q)["id"])
+        random.shuffle(ids)
+        q = _duel_quest("challenger", ids, target["username"],
+                        target.get("display_name") or target["username"], diff, tscore)
+        st.session_state.quest, st.session_state.page = q, "quests"
+        sfx("clash")
+    except BattleError as e:
+        st.session_state.flash = str(e)
+    except Exception as e:
+        st.session_state.flash = friendly_error(e, "start duel")
+
+
+def accept_duel(cid: str) -> None:
+    me = st.session_state.user
+    try:
+        now = datetime.now(TZ)
+        df = read_tab("challenges", force=True)
+        m = df[df["id"] == cid]
+        if m.empty:
+            raise BattleError("That challenge was not found.")
+        r = m.iloc[0]
+        if r["defender"].strip().lower() != me["username"].strip().lower() or duel_status(r, now) != "open":
+            raise BattleError("This challenge is not available any more.")
+        ids = [x for x in r["q_ids"].split(",") if x]
+        names = users_df().set_index(users_df()["username"].str.lower())["display_name"].to_dict()
+        cname = names.get(r["challenger"].strip().lower()) or r["challenger"]
+        q = _duel_quest("defender", ids, r["challenger"], cname, to_int(r["difficulty"], 1),
+                        to_int(r["target"], 4), cid)
+        if q["n"] < len(ids):
+            raise BattleError("Some questions of this challenge were removed.")
+        st.session_state.quest, st.session_state.page = q, "quests"
+        sfx("clash")
+    except BattleError as e:
+        st.session_state.flash = str(e)
+    except Exception as e:
+        st.session_state.flash = friendly_error(e, "accept duel")
+
+
+def _duel_winner_fields(cur: dict) -> dict:
+    xp = to_int(cur.get("xp")) + DUEL_WIN_XP
+    return {"xp": xp, "badges": LEAGUES[league_of(xp)][1],
+            "owl_eggs": to_int(cur.get("owl_eggs")) + DUEL_WIN_EGGS,
+            "owl_xp": owl_xp_of(cur) + DUEL_WIN_OWL}
+
+
+def _duel_loser_fields(cur: dict) -> dict:
+    xp = to_int(cur.get("xp"))
+    new = max(THRESH[league_of(xp)], xp - DUEL_LOSE_XP)        # a duel never demotes a league
+    return {"xp": new, "badges": LEAGUES[league_of(new)][1]}
+
+
+def resolve_duel(me: dict, q: dict) -> dict:
+    d = q["duel"]
+    now = datetime.now(TZ)
+    score, need = q["correct"], d["target"]
+    out = {"role": d["role"], "score": score, "target": need, "n": q["n"], "sent": False,
+           "won": False, "rewarded": False, "void": False}
+    if d["role"] == "challenger":
+        if score >= need:
+            append_row_tab("challenges", {
+                "id": f"{now:%Y%m%d%H%M%S}{random.randint(100, 999)}", "time": now.isoformat(timespec="seconds"),
+                "challenger": me["username"], "defender": d["target_user"], "difficulty": d["difficulty"],
+                "target": need, "q_ids": ",".join(map(str, d["ids"])), "c_score": score, "status": "open",
+            })
+            out["sent"] = True
+        return out
+    df = read_tab("challenges", force=True)
+    m = df[df["id"] == d["cid"]]
+    if m.empty or duel_status(m.iloc[0], now) != "open":
+        out["void"] = True
+        return out
+    r = m.iloc[0]
+    defender_wins = score >= need
+    winner = r["defender"] if defender_wins else r["challenger"]
+    loser = r["challenger"] if defender_wins else r["defender"]
+    today = now.date().isoformat()
+    won_today = df[(df["winner"].str.lower() == winner.lower()) & (df["rewarded"] == "1")
+                   & (df["resolved_at"].str.startswith(today))]
+    rewarded = len(won_today) < DUEL_DAILY_REWARDS
+    update_row("challenges", int(r["_row"]), {
+        "d_score": score, "status": "done", "winner": winner,
+        "resolved_at": now.isoformat(timespec="seconds"), "rewarded": "1" if rewarded else "0"})
+    if rewarded:
+        modify_user(winner, _duel_winner_fields)
+        modify_user(loser, _duel_loser_fields)
+    out.update(won=defender_wins, rewarded=rewarded, winner=winner)
+    return out
+
+
+def finalize_duel(q: dict) -> None:
+    res = resolve_duel(st.session_state.user, q)
+    q["duel"]["result"], q["saved"] = res, True
+    if res["role"] == "defender" and not res["void"]:
+        sfx("victory" if res["won"] else "defeat")
+        if res["won"] and res["rewarded"]:
+            sfx("egg_drop")
+    elif res["sent"]:
+        sfx("finish")
+    else:
+        sfx("defeat")
+
+
+def duel_result(q: dict) -> None:
+    if not q["saved"]:
+        try:
+            finalize_duel(q)
+        except Exception as e:
+            st.error(friendly_error(e, "save duel"))
+            st.button("🔁 Retry save", key="retry_duel")
+            return
+    d, r = q["duel"], q["duel"]["result"]
+    who = esc(d["target_name"])
+    if r["role"] == "challenger":
+        if r["sent"]:
+            title, art_html = "Challenge sent! 📩", anim("duel_sent", "📩")
+            body = (f"<div>You scored {r['score']}/{r['n']}. {who} has 24 hours to score "
+                    f"{r['target']}/{r['n']} or more.</div>")
+        else:
+            title, art_html = "Not enough!", anim("attack_fail", "🛡️")
+            body = (f"<div>You scored {r['score']}/{r['n']} but your target was {r['target']}.</div>"
+                    "<div>No challenge was sent and nothing was lost. Try again!</div>")
+    elif r["void"]:
+        title, art_html = "Too late", art("mascot_idle", "🦉")
+        body = "<div>This challenge was already finished or expired. Nothing changed.</div>"
+    elif r["won"]:
+        title, art_html = "You won the duel!", anim("attack_win", "🏆")
+        body = (f"<div>You scored {r['score']}/{r['n']} (needed {r['target']}).</div>" +
+                (f"<div>🎁 +{DUEL_WIN_XP} XP · +{DUEL_WIN_EGGS} 🥚 · +{DUEL_WIN_OWL} Owl XP</div>" if r["rewarded"]
+                 else "<div>🎖️ Friendly win! You hit today's reward limit, so no prizes this time.</div>"))
+    else:
+        title, art_html = "So close!", anim("attack_fail", "🛡️")
+        body = (f"<div>You scored {r['score']}/{r['n']} but needed {r['target']}.</div>" +
+                (f"<div>{who} wins. You lose {DUEL_LOSE_XP} XP.</div>" if r["rewarded"]
+                 else f"<div>{who} wins. No XP lost today. Keep going!</div>"))
+    ui(f'<div class="glass hero celebrate">{art_html}<h2>{title}</h2><div class="bonus">{body}</div></div>')
+    st.button("🤝 Back to Duels", key="atk_done", on_click=leave_attack_to_duels)
+    st.button("🏆 Arena", key="finish", on_click=leave_quest)
+
+
+def leave_attack_to_duels() -> None:
+    st.session_state.quest = None
+    st.session_state.battle_menu = "🤝 Duels"
+    st.session_state.page = "battle"
+
+
+def battle_result(q: dict) -> None:
+    return duel_result(q) if q["mode"] == "challenge" else attack_result(q)
+
+
+# ===================================================================== NEST HUB
+def bld_reqs(row: dict, key: str):
+    """(next level, [(text, ok)], egg cost) or None when maxed."""
+    lvl = bld_level(row, key)
+    if lvl >= BLD_MAX[key]:
+        return None
+    nxt, reqs, eggs = lvl + 1, [], 0
+    life, owl = lifetime_xp(row), owl_xp_of(row)
+    if key == "nest":
+        need_xp, eggs = TOWN_REQ[nxt]
+        have = to_int(row.get("owl_eggs"))
+        reqs.append((f"📘 {need_xp:,} lifetime XP (you: {life:,})", life >= need_xp))
+        reqs.append((f"🥚 {eggs} Owl Eggs (you: {have})", have >= eggs))
+        return nxt, reqs, eggs
+    reqs.append((f"🪺 Owl Nest Lv.{nxt}", nest_level(row) >= nxt))
+    if key in ("hatchery", "tower"):
+        need = (HATCH_REQ if key == "hatchery" else TOWER_REQ)[nxt]
+        reqs.append((f"🦉 {need} Owl XP (you: {owl})", owl >= need))
+    else:
+        need_xp, need_st = VAULT_REQ[nxt]
+        done = to_int(row.get("writings_done"))
+        reqs.append((f"📘 {need_xp:,} lifetime XP (you: {life:,})", life >= need_xp))
+        reqs.append((f"🖋️ {need_st} stories written (you: {done})", done >= need_st))
+    return nxt, reqs, 0
+
+
+def upgrade_building(key: str) -> None:
+    now = datetime.now(TZ)
+
+    def fn(cur):
+        info = bld_reqs(cur, key)
+        if info is None:
+            raise ShopError("This building is already at the top level.")
+        nxt, reqs, eggs = info
+        if not all(ok for _, ok in reqs):
+            raise ShopError("You don't meet every requirement yet.")
+        fields = {BLD_COL[key]: nxt}
+        if eggs:
+            fields["owl_eggs"] = to_int(cur.get("owl_eggs")) - eggs
+        if key == "hatchery" and nxt == 1:
+            fields.update(hatch_pending=0, hatch_anchor=now.isoformat(timespec="seconds"))
+        return fields
+
+    _shop_call(fn, f"{BLD_INFO[key][0]} {BLD_INFO[key][1]} upgraded!", "levelup")
+
+
+def hatch_state(row: dict, now=None):
+    """(eggs waiting, time until the next egg or None). Level 0 = not built."""
+    lvl = bld_level(row, "hatchery")
+    if lvl <= 0:
+        return 0, None
+    now = now or datetime.now(TZ)
+    every = timedelta(hours=HATCH_HOURS[lvl])
+    n, anchor = regen_calc(row, "hatch_pending", "hatch_anchor", HATCH_CAP, every, 0, now)
+    return n, (None if n >= HATCH_CAP else max(timedelta(0), anchor + every - now))
+
+
+def collect_hatchery() -> None:
+    now = datetime.now(TZ)
+
+    def fn(cur):
+        lvl = bld_level(cur, "hatchery")
+        if lvl <= 0:
+            raise ShopError("Build the Egg Hatchery first.")
+        n, _ = hatch_state(cur, now)
+        if n <= 0:
+            raise ShopError("No egg is ready yet.")
+        every = timedelta(hours=HATCH_HOURS[lvl])
+        n2, anchor = regen_calc(cur, "hatch_pending", "hatch_anchor", HATCH_CAP, every, 0, now)
+        return {"owl_eggs": to_int(cur.get("owl_eggs")) + n2, "hatch_pending": 0,
+                "hatch_anchor": (now if n2 >= HATCH_CAP else anchor).isoformat(timespec="seconds")}
+
+    _shop_call(fn, "🥚 Egg collected!", "egg_drop")
+
+
+def page_nest() -> None:
+    me = st.session_state.user
+    row = user_row(me["username"])
+    ui(f'<div class="glass nest-hub">{nest_scene_html(row)}</div>')
+    eggs = to_int(row.get("owl_eggs"))
+    ui(f'<div class="glass hero"><div class="egg-count">🥚 <b>{eggs}</b> Owl Eggs</div>'
+       f'<small>Academic XP unlocks the Owl Nest and Shield Vault. Owl XP from battles unlocks the '
+       f'Hatchery and Watchtower.</small></div>')
+    hl = bld_level(row, "hatchery")
+    if hl > 0:
+        n, nxt = hatch_state(row)
+        every = HATCH_HOURS[hl]
+        txt = (f"🥚 {n} egg{'s' if n != 1 else ''} ready to collect" if n
+               else f"Next egg in {fmt_td(nxt)}")
+        ui(f'<div class="glass notice">🥚 <b>Egg Hatchery Lv.{hl}</b> · 1 egg every {every}h · '
+           f'holds up to {HATCH_CAP}<br>{txt}</div>')
+        st.button("🥚 Collect egg" + ("s" if n > 1 else ""), key="buy_hatch", disabled=n <= 0,
+                  on_click=collect_hatchery)
+    for key in ("nest", "hatchery", "vault", "tower"):
+        icon, name, desc = BLD_INFO[key]
+        lvl, mx = bld_level(row, key), BLD_MAX[key]
+        info = bld_reqs(row, key)
+        if info is None:
+            req_html, can = '<div class="req ok">👑 Max level reached!</div>', False
+        else:
+            nxt, reqs, _ = info
+            req_html = (f'<div class="req-title">To reach Lv.{nxt}:</div>' +
+                        "".join(f'<div class="req {"ok" if ok else "no"}">{"✅" if ok else "⬜"} {esc(t)}</div>'
+                                for t, ok in reqs))
+            can = all(ok for _, ok in reqs)
+        effect = ""
+        if key == "nest":
+            effect = f"🧱 {walls_for(row)} walls now"
+        elif key == "hatchery":
+            effect = "Not built yet" if lvl == 0 else f"1 egg / {HATCH_HOURS[lvl]}h"
+        elif key == "vault":
+            effect = f"🛡️ {hit_shield_hours(row)}h shield after a raid"
+        else:
+            effect = f"+{TOWER_WALLS[lvl]} walls"
+        ui(f'''
+        <div class="glass bld-card">
+          <div class="bld-head">{art("bld_" + key if key != "nest" else "nest_" + str(lvl), icon, "art bld-art")}
+            <div class="bld-title"><b>{esc(name)}</b><small>Lv.{lvl}/{mx} · {effect}</small></div></div>
+          <p class="bld-desc">{esc(desc)}</p>
+          {req_html}
+        </div>
+        ''')
+        if info is not None:
+            label = "🔨 Build" if lvl == 0 else f"⬆️ Upgrade to Lv.{info[0]}"
+            if key == "nest" and info[2]:
+                label += f" · {info[2]} 🥚"
+            st.button(label, key=f"buy_bld_{key}", disabled=not can, on_click=upgrade_building, args=(key,))
+    st.button("← Back to Arena", key="nest_back", on_click=go, args=("home",))
+
+
+# ---- visit another player's base
+def _visit_body(username: str) -> None:
+    row = user_row(username)
+    if not row:
+        st.write("Player not found.")
+        return
+    bio = (row.get("bio") or "").strip()
+    badges = all_badges(row.get("achievements", ""))
+    chips = "".join(f'<span class="chip">{esc(b)}</span>' for b in badges[:12]) or "<small>No badges yet</small>"
+    ui(f'''
+    {nest_scene_html(row)}
+    <div class="bio-box">{esc_nl(bio) if bio else "<i>No bio yet</i>"}</div>
+    <div class="stats">
+      <div class="stat"><b>{to_int(row.get("attacks_won"))}</b><span>Raids won</span></div>
+      <div class="stat"><b>{to_int(row.get("defends_won"))}</b><span>Defended</span></div>
+      <div class="stat"><b>{to_int(row.get("writings_done"))}</b><span>Stories</span></div>
+    </div>
+    <div class="chips">{chips}</div>
+    ''')
+
+
+if hasattr(st, "dialog"):
+    visit_base = st.dialog("Visit Base 👁️")(_visit_body)
+else:                                        # very old Streamlit: show it inline instead of a pop-up
+    def visit_base(username: str) -> None:
+        with st.container(border=True):
+            _visit_body(username)
+
+
+def visit_picker(df) -> None:
+    me = st.session_state.user["username"].lower()
+    others = df[df["username"].str.lower() != me]
+    if others.empty:
+        return
+    labels = {r["username"]: (r["display_name"] or r["username"]) for _, r in others.iterrows()}
+    ui('<div class="glass visit-card"><h3>👁️ Visit a Base</h3><small>Peek at a classmate\'s nest.</small></div>')
+    pick = st.selectbox("Visit a base", list(labels), format_func=lambda u: labels[u],
+                        key="visit_pick", label_visibility="collapsed")
+    if st.button("👁️ Visit Base", key="visit_go"):
+        visit_base(pick)
+
+
+# ===================================================================== SHOP
+def _shop_call(fn, ok_msg: str, sound: str = "chest") -> None:
+    me = st.session_state.user
+    try:
+        modify_user(me["username"], fn)
+        st.session_state.flash_ok = ok_msg
+        sfx(sound)
+    except ShopError as e:
+        st.session_state.flash = str(e)
+    except Exception as e:
+        st.session_state.flash = friendly_error(e, "shop")
+
+
+def buy_item(key: str) -> None:
+    spec = {k: (ic, ti, cost) for k, ic, ti, _, cost in SHOP_ITEMS}[key]
+    cost = spec[2]
+    now = datetime.now(TZ)
+
+    def fn(cur):
+        eggs = to_int(cur.get("owl_eggs"))
+        if eggs < cost:
+            raise ShopError(f"You need {cost} Owl Eggs for that.")
+        fields = {"owl_eggs": eggs - cost}
+        if key.startswith("pu_"):
+            inv, kind = get_inventory(cur), key[3:]
+            if inv[kind] >= POWERUP_MAX:
+                raise ShopError("You already carry the maximum of this power-up.")
+            inv[kind] += 1
+            fields["powerups"] = inv_to_str(inv)
+        elif key == "ink":
+            c, anchor = ink_calc(cur, now)
+            if c >= MAX_INK:
+                raise ShopError("Your ink is already full.")
+            fields.update(ink_charges=c + 1,
+                          last_ink_grant=(now if c + 1 >= MAX_INK else anchor).isoformat(timespec="seconds"))
+        elif key == "arrow":
+            n, anchor = regen_calc(cur, "arrows", "last_arrow_grant", ARROW_MAX, ARROW_REGEN, ARROW_MAX, now)
+            if n >= ARROW_MAX:
+                raise ShopError("Your arrows are already full.")
+            fields.update(arrows=n + 1,
+                          last_arrow_grant=(now if n + 1 >= ARROW_MAX else anchor).isoformat(timespec="seconds"))
+        elif key == "shield":
+            base = max(now, parse_ts(cur.get("shield_until")) or now)
+            fields["shield_until"] = min(base + timedelta(hours=SHIELD_BUY_HOURS),
+                                         now + timedelta(hours=48)).isoformat(timespec="seconds")
+        elif key == "freeze":
+            n = to_int(cur.get("streak_freeze"))
+            if n >= 2:
+                raise ShopError("You can keep at most 2 streak freezes.")
+            fields["streak_freeze"] = n + 1
+        return fields
+
+    _shop_call(fn, f"{spec[0]} {spec[1]} bought!", "shield" if key == "shield" else "chest")
+
+
+def owned_of(row, kind: str) -> list:
+    cat, _, own, _ = COSMETICS[kind]
+    return [x for x in (row.get(own) or "").split(",") if x in cat]
+
+
+def buy_cosmetic(kind: str, key: str) -> None:
+    cat, col, own, _ = COSMETICS[kind]
+    label, cost = cat[key]
+
+    def fn(cur):
+        have = owned_of(cur, kind)
+        if key in have:
+            raise ShopError("You already own this.")
+        eggs = to_int(cur.get("owl_eggs"))
+        if eggs < cost:
+            raise ShopError(f"You need {cost} Owl Eggs.")
+        have.append(key)
+        return {"owl_eggs": eggs - cost, own: ",".join(have), col: key}
+
+    _shop_call(fn, f"{label} unlocked and equipped!")
+    shop_preview().pop(kind, None)
+
+
+def equip_cosmetic(kind: str, key: str) -> None:
+    _, col, _, _ = COSMETICS[kind]
+
+    def fn(cur):
+        if key and key not in owned_of(cur, kind):
+            raise ShopError("You don't own this yet.")
+        return {col: key}
+
+    _shop_call(fn, "Updated!", "click")
+    shop_preview().pop(kind, None)
+
+
+def shop_preview() -> dict:
+    return st.session_state.setdefault("shop_preview", {})
+
+
+def set_preview(kind: str, key: str) -> None:
+    shop_preview()[kind] = key
+    sfx("click")
+
+
+def clear_preview() -> None:
+    st.session_state.shop_preview = {}
+
+
+def preview_row(row: dict) -> dict:
+    r = dict(row)
+    for kind, key in shop_preview().items():
+        r[COSMETICS[kind][1]] = key
+    return r
+
+
+def page_shop() -> None:
+    me = st.session_state.user
+    row = user_row(me["username"])
+    eggs = to_int(row.get("owl_eggs"))
+    prev = shop_preview()
+    ui(f'''
+    <div class="glass hero">
+      <h2>🛒 Egg Shop</h2>
+      <div class="egg-count">🥚 <b>{eggs}</b> Owl Eggs</div>
+      <small>{"👁️ Previewing. Nothing is bought until you press Buy." if prev else
+              "Tap 👁️ Try on any style to see it on your profile before you buy."}</small>
+      {nest_scene_html(preview_row(row), compact=True)}
+    </div>
+    ''')
+    if prev:
+        st.button("↩️ Stop previewing", key="shop_clear", on_click=clear_preview)
+    sh = shield_left(row)
+    inv, ink_n, arrows = get_inventory(row), ink_state(row)[0], arrow_state(row)[0]
+    have = {"pu_fifty": inv["fifty"], "pu_time": inv["time"], "pu_skip": inv["skip"], "ink": ink_n,
+            "arrow": arrows, "freeze": to_int(row.get("streak_freeze"))}
+    ui('<div class="glass"><h3>🎒 Boosts</h3></div>')
+    for key, icon, title, desc, cost in SHOP_ITEMS:
+        extra = (f" · you have {have[key]}" if key in have
+                 else (f" · active {fmt_td(sh)}" if key == "shield" and sh else ""))
+        ui(f'''
+        <div class="glass shop-item"><span class="shop-ico">{icon}</span>
+          <div class="shop-info"><b>{esc(title)}</b><small>{esc(desc)}{extra}</small></div>
+          <span class="shop-cost">🥚 {cost}</span></div>
+        ''')
+        st.button(f"Buy · {cost} 🥚", key=f"buy_{key}", disabled=eggs < cost, on_click=buy_item, args=(key,))
+    for kind, (cat, col, _, heading) in COSMETICS.items():
+        ui(f'<div class="glass"><h3>{heading}</h3></div>')
+        owned, equipped = owned_of(row, kind), (row.get(col) or "")
+        for key, (label, cost) in cat.items():
+            if kind == "glow":
+                shown = f'<span class="nm glow-{key}">{esc(label)}</span>'
+            else:
+                shown = esc(label)
+            state = "✅ Equipped" if equipped == key else ("Owned" if key in owned else f"🥚 {cost}")
+            ui(f'<div class="glass shop-item"><div class="shop-info"><b>{shown}</b></div>'
+               f'<span class="shop-cost">{state}</span></div>')
+            c1, c2 = st.columns(2, gap="small")
+            with c1:
+                st.button("👁️ Try", key=f"buy_try_{kind}_{key}", on_click=set_preview, args=(kind, key))
+            with c2:
+                if key in owned:
+                    st.button("Equipped" if equipped == key else "Equip", key=f"buy_eq_{kind}_{key}",
+                              disabled=equipped == key, on_click=equip_cosmetic, args=(kind, key))
+                else:
+                    st.button(f"Buy · {cost} 🥚", key=f"buy_new_{kind}_{key}", disabled=eggs < cost,
+                              on_click=buy_cosmetic, args=(kind, key))
+        if equipped:
+            st.button("Remove " + kind, key=f"buy_off_{kind}", on_click=equip_cosmetic, args=(kind, ""))
+    st.button("← Back to Arena", key="shop_back", on_click=go, args=("home",))
+
+
+# ===================================================================== BATTLE PAGES
+def page_battle() -> None:
+    me = st.session_state.user
+    row = user_row(me["username"])
+    tab = st.radio("Battle menu", ["⚔️ Attack", "🤝 Duels", "📜 Log"], horizontal=True,
+                   label_visibility="collapsed", key="battle_menu")
+    {"⚔️ Attack": battle_attack, "🤝 Duels": battle_duels, "📜 Log": battle_log}[tab](row)
+    st.button("← Back to Arena", key="bat_back", on_click=go, args=("home",))
+
+
+def owl_card_html(row: dict) -> str:
+    owl = owl_xp_of(row)
+    bl = battle_league(owl)
+    nxt = bl + 1 if bl + 1 < len(BATTLE_LEAGUES) else None
+    if nxt is None:
+        note, pct = "👑 Legend! Defend your title.", 100
+    else:
+        lo, hi = BATTLE_LEAGUES[bl][0], BATTLE_LEAGUES[nxt][0]
+        note, pct = f"{hi - owl} Owl XP to {BATTLE_LEAGUES[nxt][1]}", int((owl - lo) / (hi - lo) * 100)
+    return (f'<div class="owl-card">{battle_icon(bl)}<div class="owl-mid"><b>{BATTLE_LEAGUES[bl][1]}</b>'
+            f'<small>🦉 {owl} Owl XP · {note}</small>'
+            f'<div class="bar sm"><i style="width:{pct}%"></i></div></div></div>')
+
+
+def battle_attack(row: dict) -> None:
+    me = st.session_state.user
+    now = datetime.now(TZ)
+    arrows, nxt = arrow_state(row)
+    sh = shield_left(row, now)
+    regen_h = int(ARROW_REGEN.total_seconds() // 3600)
+    nxt_txt = f" (next in {fmt_td(nxt)})" if nxt is not None else ""
+    s = st.session_state.get("search")
+    if s:
+        ui(f'''
+        <div class="glass hero compact">
+          {owl_card_html(row)}
+          <div class="stats">
+            <div class="stat"><b>{arrows}/{ARROW_MAX}</b><span>🏹 Arrows</span></div>
+            <div class="stat"><b>{fmt_td(sh) if sh else "–"}</b><span>🛡️ Shield</span></div>
+            <div class="stat"><b>{walls_for(row)}</b><span>🧱 Your walls</span></div>
+          </div>
+        </div>
+        ''')
+    else:
+        ui(f'''
+        <div class="glass hero">
+          {art("mascot_attack", "⚔️")}
+          <h2>Battle Arena</h2>
+          <p class="tagline">Break their walls. Win their Owl XP.</p>
+          {owl_card_html(row)}
+          <div class="stats">
+            <div class="stat"><b>{arrows}/{ARROW_MAX}</b><span>🏹 Arrows</span></div>
+            <div class="stat"><b>{fmt_td(sh) if sh else "–"}</b><span>🛡️ Shield</span></div>
+            <div class="stat"><b>{walls_for(row)}</b><span>🧱 Your walls</span></div>
+          </div>
+        </div>
+        ''')
+    if not attacks_enabled():
+        ui('<div class="glass notice">⏸️ Attacks are paused by your teacher.</div>')
+        return
+    if not s:
+        st.button("Find Opponent ⚔️  (1 🏹)", key="atk_find", disabled=arrows <= 0, on_click=begin_search)
+        if arrows <= 0:
+            ui('<div class="glass notice">🏹 You are out of arrows. Wait for a recharge or buy one in the 🛒 Shop.</div>')
+        ui(f'''
+        <div class="glass"><div class="rules">
+          <div>🔎 Find Opponent costs 1 arrow. Skipping with Next is free!</div>
+          <div>🏹 +1 arrow every {regen_h}h{nxt_txt}</div>
+          <div>🧱 Break {int(NEED_RATIO * 100)}% of the walls to win · only Owl XP is at stake</div>
+          <div>😤 Revenge on someone who hit you is free for 48 hours</div>
+        </div></div>
+        ''')
+        return
+    uname = s["cands"][s["i"] % len(s["cands"])]
+    t = user_row(uname)
+    if not t:
+        search_next()
+        st.rerun()
+    my_owl, t_owl = owl_xp_of(row), owl_xp_of(t)
+    name = t.get("display_name") or uname
+    ui(f'''
+    <div class="glass target found">
+      <div class="found-tag">🔎 Opponent found · {s["i"] % len(s["cands"]) + 1}/{len(s["cands"])}</div>
+      {nest_scene_html(t)}
+      <div class="stats">
+        <div class="stat"><b>{walls_for(t)}</b><span>🧱 Walls</span></div>
+        <div class="stat"><b>+{owl_loot(t_owl) + owl_win_bonus(my_owl, t_owl)}</b><span>Prize (Owl XP)</span></div>
+        <div class="stat"><b>−{owl_fail_loss(my_owl, t_owl)}</b><span>Risk (Owl XP)</span></div>
+      </div>
+    </div>
+    ''')
+    st.button(f"⚔️ Attack {name[:14]}!", key="atk_go", on_click=attack_from_search)
+    c1, c2 = st.columns(2, gap="small")
+    with c1:
+        st.button("Next ⏭️ (free)", key="atk_next", on_click=search_next)
+    with c2:
+        st.button("✖️ Leave", key="atk_leave", on_click=end_search)
+
+
+def battle_duels(row: dict) -> None:
+    me = st.session_state.user
+    now = datetime.now(TZ)
+    allu = users_df()
+    names = {r["username"].lower(): (r["display_name"] or r["username"]) for _, r in allu.iterrows()}
+    labels = {r["username"]: (r["display_name"] or r["username"]) for _, r in allu.iterrows()
+              if r["username"].strip().lower() != me["username"].strip().lower() and not is_teacher(r.to_dict())}
+    nm = lambda u: names.get(u.strip().lower()) or u
+    diff_label = {1: "Easy", 2: "Medium", 3: "Hard"}
+    ui(f'''
+    <div class="glass hero">
+      {anim("duel_sent", "🤝")}
+      <h2>1v1 Duels</h2>
+      <p class="tagline">Free to play. No arrows. No Owl XP at risk.</p>
+      <div class="rules">
+        <div>📩 You play {DUEL_Q} questions first and must reach your own target score</div>
+        <div>🎯 Your classmate then has 24 hours to match it</div>
+        <div>🏆 Winner: +{DUEL_WIN_XP} XP · +{DUEL_WIN_EGGS} 🥚 · +{DUEL_WIN_OWL} Owl XP</div>
+        <div>😅 Loser: −{DUEL_LOSE_XP} XP · max {DUEL_DAILY_REWARDS} rewarded wins a day · same pair once per 24h</div>
+      </div>
+    </div>
+    ''')
+    for r in incoming_duels(me["username"], now):
+        left = DUEL_EXPIRE - (now - parse_ts(r["time"]))
+        ui(f'<div class="glass notice duel-alert">📩 <b>{esc(nm(r["challenger"]))}</b> challenges you! '
+           f'{diff_label.get(to_int(r["difficulty"], 1), "Medium")} · get {to_int(r["target"])}/{DUEL_Q} to win · '
+           f'{fmt_td(left)} left</div>')
+        st.button(f"⚔️ Accept duel vs {nm(r['challenger'])[:12]}", key=f"duel_acc_{r['id']}",
+                  on_click=accept_duel, args=(r["id"],))
+    df = read_tab("challenges")
+    ui('<div class="glass"><h3>📤 Send a challenge</h3></div>')
+    if not labels:
+        ui('<div class="glass notice">No classmates to challenge yet.</div>')
+    else:
+        pick = st.selectbox("Classmate", list(labels), format_func=lambda u: labels[u], key="duel_target")
+        st.radio("Difficulty", [1, 2, 3], format_func=lambda d: diff_label[d], horizontal=True, key="duel_diff")
+        st.slider(f"Target score (out of {DUEL_Q})", 3, DUEL_Q, min(4, DUEL_Q), key="duel_score")
+        wait = duel_pair_wait(df, me["username"], pick, now)
+        st.button(f"⏳ Duel again in {fmt_td(wait)}" if wait else "🤝 Start duel", key="duel_go",
+                  disabled=bool(wait), on_click=start_duel)
+    mine = df[(df["challenger"].str.lower() == me["username"].lower())
+              | (df["defender"].str.lower() == me["username"].lower())].tail(8).iloc[::-1]
+    if not mine.empty:
+        ui('<div class="glass"><h3>📜 Recent duels</h3></div>')
+    for _, r in mine.iterrows():
+        stt = duel_status(r, now)
+        mine_is_c = r["challenger"].strip().lower() == me["username"].lower()
+        other = nm(r["defender"] if mine_is_c else r["challenger"])
+        if stt == "open":
+            msg, cls = (f"⏳ Waiting for <b>{esc(other)}</b> to answer" if mine_is_c
+                        else f"📩 <b>{esc(other)}</b> is waiting for you"), ""
+        elif stt == "expired":
+            msg, cls = f"⌛ Duel with <b>{esc(other)}</b> expired", ""
+        else:
+            won = r["winner"].strip().lower() == me["username"].lower()
+            msg, cls = (f"{'🏆 You beat' if won else '😅 You lost to'} <b>{esc(other)}</b> "
+                        f"(answered {to_int(r['d_score'])}/{DUEL_Q}, target {to_int(r['target'])})",
+                        "ok" if won else "no")
+        ui(f'<div class="glass log-row {cls}">{msg}</div>')
+
+
+def battle_log(row: dict) -> None:
+    me = st.session_state.user
+    u = me["username"].lower()
+    now = datetime.now(TZ)
+    log_df = read_tab("battles")
+    allu = users_df()
+    names = allu.set_index(allu["username"].str.lower())["display_name"].to_dict()
+    nm = lambda x: esc(names.get(x.strip().lower()) or x)
+    ready = {r["id"]: r for r in revenge_ready(me["username"], now)}
+    ui(f'''
+    <div class="glass hero">
+      <h2>📜 Battle Log</h2>
+      <div class="stats">
+        <div class="stat"><b>{to_int(row.get("attacks_won"))}</b><span>Attacks won</span></div>
+        <div class="stat"><b>{to_int(row.get("defends_won"))}</b><span>Defended</span></div>
+        <div class="stat"><b>{to_int(row.get("revenges_won"))}</b><span>Revenges</span></div>
+      </div>
+    </div>
+    ''')
+    mine = log_df[(log_df["attacker"].str.lower() == u) | (log_df["defender"].str.lower() == u)]
+    mine = mine.tail(15).iloc[::-1]
+    if mine.empty:
+        ui('<div class="glass notice">No battles yet. Go to ⚔️ Attack and break some walls!</div>')
+        return
+    for _, r in mine.iterrows():
+        ts = parse_ts(r["time"])
+        ago = f"{fmt_td(now - ts)} ago" if ts else ""
+        walls_txt = f'{to_int(r["broken"])}/{to_int(r["walls"])} walls'
+        win = r["result"] == "win"
+        if r["attacker"].strip().lower() == u:
+            who = nm(r["defender"])
+            if win:
+                msg, cls = f'⚔️ You attacked <b>{who}</b> · {walls_txt} · <b>WON +{to_int(r["loot"]) + to_int(r["bonus"])} Owl XP</b>', "ok"
+            else:
+                msg, cls = f'⚔️ You attacked <b>{who}</b> · {walls_txt} · held · <b>−{to_int(r["attacker_loss"])} Owl XP</b>', "no"
+        else:
+            who = nm(r["attacker"])
+            if win:
+                msg, cls = f'🏴 <b>{who}</b> hit you · {walls_txt} · <b>−{to_int(r["loot"])} Owl XP</b>', "no"
+            else:
+                msg, cls = f'🛡️ You defended against <b>{who}</b> · <b>+{to_int(r["attacker_loss"]) + OWL_DEFEND_BONUS} Owl XP</b>', "ok"
+        ui(f'<div class="glass log-row {cls}">{msg}<small>{ago}</small></div>')
+        if r["id"] in ready:
+            left = REVENGE_WINDOW - (now - parse_ts(r["time"]))
+            who_n = names.get(r["attacker"].strip().lower()) or r["attacker"]
+            st.button(f"😤 Revenge on {who_n} · free · {fmt_td(left)} left",
+                      key=f"rev_{r['id']}", on_click=start_attack, args=(r["attacker"], r["id"]))
+
+
+def render_battle_record(row: dict) -> None:
+    p = prestige_info(row)
+    owl = owl_xp_of(row)
+    ui(f'''
+    <div class="glass hero">
+      <h2>🏅 {battle_title(owl)}</h2>
+      {owl_card_html(row)}
+      <div class="stats">
+        <div class="stat"><b>{to_int(row.get("attacks_won"))}</b><span>Attacks won</span></div>
+        <div class="stat"><b>{to_int(row.get("defends_won"))}</b><span>Defended</span></div>
+        <div class="stat"><b>{to_int(row.get("revenges_won"))}</b><span>Revenges</span></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><b>{to_int(row.get("total_looted")):,}</b><span>Owl XP looted</span></div>
+        <div class="stat"><b>{to_int(row.get("attack_streak"))}</b><span>Win streak</span></div>
+        <div class="stat"><b>{nest_level(row)}</b><span>Nest level</span></div>
+      </div>
+      <div class="bonus">
+        <div>⭐ Prestige {p["level"]} · {p["progress"]}/{XP_PER_PRESTIGE} XP to the next one</div>
+        <div>🗓️ Season ends in {days_left_in_season()} days. You would bank +{p["pending"]} Prestige now.</div>
+      </div>
+    </div>
+    ''')
+
+
+# ===================================================================== TEACHER TOOLS
+def teacher_battle_tools() -> None:
+    st.markdown("**⚔️ Battles and season**")
+    with st.form("battle_form"):
+        on = st.checkbox("Attacks enabled", value=attacks_enabled())
+        if st.form_submit_button("💾 Save battle settings"):
+            set_setting("attacks_enabled", "TRUE" if on else "FALSE")
+            st.success("Saved!")
+    st.caption(f"Season {get_setting('season') or season_key()} · {days_left_in_season()} days left. "
+               "The reset runs by itself on the 1st of the month.")
+    sure = st.checkbox("I understand this resets EVERY student's XP and league right now", key="season_sure")
+    if st.button("🗓️ End the season now", key="season_force", disabled=not sure):
+        try:
+            maybe_season_reset(force=True)
+            st.success("Season ended. Rewards paid and XP reset.")
+        except Exception as e:
+            st.error(friendly_error(e, "season reset"))
+
+
+def teacher_class_and_battle() -> None:
+    teacher_class_tools()
+    teacher_battle_tools()
+
+
+def student_rows() -> "pd.DataFrame":
+    df = read_tab("users", force=True)
+    df = df[(df["username"].str.strip() != "") & ~df["role"].str.strip().str.lower().isin(TEACHER_ROLES)]
+    return df
+
+
+def apply_grants(rows, reg_xp: int, owl: int, eggs: int) -> int:
+    """One bulk write for any number of students. Returns how many were changed."""
+    changes = {}
+    for _, r in rows.iterrows():
+        xp = max(0, to_int(r["xp"]) + reg_xp)
+        changes[int(r["_row"])] = {
+            "xp": xp, "badges": LEAGUES[league_of(xp)][1],
+            "owl_xp": max(0, owl_xp_of(r) + owl), "owl_eggs": max(0, to_int(r["owl_eggs"]) + eggs),
+        }
+    bulk_update("users", changes)
+    return len(changes)
+
+
+def apply_integrity_penalty(username: str, penalty: int, note: str) -> dict:
+    out = {}
+    today = datetime.now(TZ).date().isoformat()
+
+    def fn(cur):
+        xp = max(0, to_int(cur.get("xp")) - penalty)
+        old_notes = (cur.get("academic_notes") or "").strip()
+        entry = f"[{today}] -{penalty} XP, streak reset: {note.strip()[:200]}"
+        notes = (old_notes + " | " + entry).strip(" |")[-1500:]
+        out.update(new_xp=xp)
+        return {"xp": xp, "badges": LEAGUES[league_of(xp)][1], "streak": 0, "academic_notes": notes}
+
+    modify_user(username, fn)
+    return out
+
+
+def teacher_grants() -> None:
+    df = student_rows()
+    if df.empty:
+        st.info("No students yet.")
+        return
+    labels = {r["username"]: f'{r["display_name"] or r["username"]} ({r["username"]})' for _, r in df.iterrows()}
+    classes = sorted({c.strip() for c in df["class"] if c.strip()})
+    options = ["__all__"] + [f"__class__{c}" for c in classes] + list(labels)
+
+    def fmt(o):
+        if o == "__all__":
+            return "🏫 Everyone"
+        if o.startswith("__class__"):
+            return f"🏫 Class: {o[9:]}"
+        return labels[o]
+
+    st.markdown("**🎁 Custom grants**")
+    st.caption("Give Regular XP, Owl XP or Owl Eggs to one student, one class, or everyone. Use a negative number to take away.")
+    target = st.selectbox("Who gets it?", options, format_func=fmt, key="grant_target")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        reg = st.number_input("Regular XP", -5000, 5000, 0, step=10, key="grant_reg")
+    with c2:
+        owl = st.number_input("Owl XP", -1000, 1000, 0, step=5, key="grant_owl")
+    with c3:
+        egg = st.number_input("Owl Eggs", -100, 100, 0, step=1, key="grant_egg")
+    if target == "__all__":
+        rows = df
+    elif target.startswith("__class__"):
+        rows = df[df["class"].str.strip() == target[9:]]
+    else:
+        rows = df[df["username"] == target]
+    ok = st.checkbox(f"Yes, apply this to {len(rows)} student{'s' if len(rows) != 1 else ''}", key="grant_ok")
+    if st.button("🎁 Grant now", key="grant_go", disabled=not ok or not (reg or owl or egg)):
+        try:
+            n = apply_grants(rows, int(reg), int(owl), int(egg))
+            st.success(f"Done! Updated {n} student{'s' if n != 1 else ''}.")
+        except Exception as e:
+            st.error(friendly_error(e, "grant"))
+
+    st.divider()
+    st.markdown("**🚨 Academic integrity**")
+    st.caption("For copied, AI-written or low-effort work: takes 100-500 XP, resets the streak, and writes an Academic Note on the student's record.")
+    who = st.selectbox("Student", list(labels), format_func=lambda u: labels[u], key="integ_who")
+    last = (df[df["username"] == who].iloc[0]["academic_notes"] or "").strip()
+    if last:
+        st.caption(f"Earlier notes: {last[-300:]}")
+    pen = st.slider("XP penalty", 100, 500, 100, step=50, key="integ_pen")
+    why = st.text_input("Reason (saved as an Academic Note)", key="integ_why", max_chars=200)
+    sure = st.checkbox("I confirm this penalty", key="integ_ok")
+    if st.button("🚨 Apply penalty", key="integ_go", disabled=not (sure and len(why.strip()) >= 3)):
+        try:
+            res = apply_integrity_penalty(who, int(pen), why)
+            st.success(f"Applied. {labels[who]} now has {res['new_xp']:,} XP and a note on record.")
+        except Exception as e:
+            st.error(friendly_error(e, "penalty"))
+
+
 # ----------------------------------------------------------------- main
 def main():
     ui(f"<style>{(BASE / 'style.css').read_text(encoding='utf-8')}</style>")
@@ -2331,12 +4333,19 @@ def main():
         page_login()
     else:
         try:
+            maybe_season_reset()
+        except Exception as e:
+            log.warning("season check failed: %s", type(e).__name__)
+        try:
             sync_me()
         except Exception as e:
             log.warning("sync failed: %s", type(e).__name__)
         flash = st.session_state.pop("flash", None)
         if flash:
             st.error(flash)
+        flash_ok = st.session_state.pop("flash_ok", None)
+        if flash_ok:
+            st.success(flash_ok)
         page = st.session_state.page
         try:
             {
@@ -2344,6 +4353,9 @@ def main():
                 "quests": page_quests,
                 "leagues": page_leagues,
                 "profile": page_profile,
+                "battle": page_battle,
+                "nest": page_nest,
+                "shop": page_shop,
                 "story": page_story,
                 "teacher": page_teacher,
             }.get(page, page_home)()
