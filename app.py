@@ -4283,7 +4283,7 @@ def my_base(row: dict, prefix: str) -> None:
         if st.button("🎁", key=f"{prefix}_bank", help="Season Bank: what you will earn this season"):
             season_bank_dialog()
         for key in BLD_COL:
-            if st.button("·", key=f"{prefix}_bt_{key}", help=f"{BLD_INFO[key][1]}: tap to open"):
+            if st.button("·", key=f"{prefix}_bt_{key}"):
                 BLD_DIALOGS[key]()
 
 
