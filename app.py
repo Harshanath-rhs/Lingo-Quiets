@@ -4137,9 +4137,20 @@ def _bld_body(key: str) -> None:
     eggs = to_int(row.get("owl_eggs"))
     pips = "".join(
         f'<i class="{"on" if i < lvl else ("up" if inf and i == lvl else "")}"></i>' for i in range(mx))
+    nxt_lvl = inf["target"] if inf else (None if maxed else lvl + 1)
+    cur_art = bld_art(key, lvl, "art bld-big", bool(inf))
+    if nxt_lvl:
+        now_lbl = "Empty plot" if lvl == 0 else f"Now · Lv.{lvl}"
+        pics = (f'<div class="bld-compare">'
+                f'<div class="bc-side">{cur_art}<small>{now_lbl}</small></div>'
+                f'<div class="bc-arrow">➡️</div>'
+                f'<div class="bc-side next">{bld_art(key, nxt_lvl, "art bld-big")}'
+                f'<small>Next · Lv.{nxt_lvl}</small></div></div>')
+    else:
+        pics = f'<div class="bld-big-wrap">{cur_art}</div>'
     ui(f'''
     <div class="bld-dlg{" max" if maxed else ""}">
-      <div class="bld-big-wrap">{bld_art(key, lvl, "art bld-big", bool(inf))}</div>
+      {pics}
       <h3>{icon} {esc(name)}</h3>
       <div class="lvl-pips">{pips}</div>
       <small>Lv.{lvl}/{mx} · {esc(bld_effect(key, lvl))}</small>
