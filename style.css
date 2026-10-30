@@ -2070,3 +2070,23 @@ div[role="dialog"] .records .rec { color: #fff; }
 .st-key-lblist [class*="st-key-lbv_"] { right: 50px; }
 .xp-col { min-width: 74px; }
 .records h3 { font-size: 1.1rem !important; text-align: left; }
+
+/* ---- v5.1 fix: make the invisible building tap-buttons always fill their tile ---- */
+[class*="st-key-base_"] [class*="_bt_"] [data-testid="stButton"],
+[class*="st-key-base_"] [class*="_bt_"] .stButton,
+[class*="st-key-base_"] [class*="_bt_"] [data-testid="stTooltipHoverTarget"],
+[class*="st-key-base_"] [class*="_bt_"] [data-testid="stElementContainer"] {
+  position: static !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+[class*="st-key-base_"] [class*="_bt_"] button {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  opacity: 0 !important;
+  cursor: pointer !important;
+}
