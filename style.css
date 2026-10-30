@@ -702,16 +702,7 @@ textarea::placeholder {
   font-size: 1.05rem;
   animation: twinkle 1.5s infinite;
 }
-.avatar.lg-champion { animation: flicker .9s ease-in-out infinite alternate; }
-.avatar.lg-champion::after {
-  content: '🔥';
-  position: absolute;
-  top: -15px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 1.05rem;
-  animation: flicker .65s infinite alternate;
-}
+
 .avatar.lg-master::before,
 .avatar.lg-titan::before,
 .avatar.lg-legend::before {
@@ -2090,3 +2081,13 @@ div[role="dialog"] .records .rec { color: #fff; }
   opacity: 0 !important;
   cursor: pointer !important;
 }
+
+/* ---- building pop-up: current level -> next level ---- */
+.bld-compare { display: flex; align-items: center; justify-content: center; gap: .5rem; margin: .2rem 0 .4rem; }
+.bc-side { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; }
+.bc-side small { font-size: .72rem; opacity: .9; margin-top: .15rem; }
+.bc-side .bld-big { width: 104px !important; height: 104px !important; }
+.bc-side .bld-big.emoji { font-size: 3.6rem !important; line-height: 104px !important; height: 104px !important; }
+.bc-arrow { font-size: 1.5rem; flex: 0 0 auto; animation: bob 1.6s ease-in-out infinite; }
+.bc-side.next .bld-big { filter: drop-shadow(0 0 12px rgba(255, 210, 63, .85)); }
+.bc-side.next small { color: var(--gold); font-weight: 700; }
