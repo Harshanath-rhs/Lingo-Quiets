@@ -127,7 +127,7 @@ SHIELD_BUY_HOURS = 12
 WAR_WIN, WAR_DEFEND = 5, 3        # Class Battle points for cross-house attacks / defenses
 BATTLE_LEAGUES = [(0, "Recruit", "🪖"), (50, "Raider", "⚔️"), (150, "Knight", "🛡️"),
                   (400, "Warlord", "🔥"), (1000, "Legend", "👑")]
-OWL_XP_RESETS_MONTHLY = False     # True = Owl XP also resets with the monthly season
+OWL_XP_RESETS_MONTHLY = True      # attack leagues (Owl XP) reset every season; lifetime Owl XP is kept for buildings
 
 # 1v1 question duels (no arrows, no Owl XP cost)
 DUEL_Q, DUEL_TIME = 5, 30
@@ -168,9 +168,11 @@ SHOP_ITEMS = [
 GLOWS = {"cyan": ("🩵 Neon Cyan", 5), "inferno": ("🔥 Inferno Red", 10),
          "gold": ("✨ Gold Sparkle", 15), "aurora": ("🌈 Rainbow Aurora", 25)}
 BANNERS = {"midnight": ("🏰 Midnight Castle", 12), "library": ("📚 Ancient Library", 12),
-           "dragon": ("🐉 Dragon Lair", 15), "cyber": ("💠 Cyber Grid", 15)}
+           "dragon": ("🐉 Dragon Lair", 15), "cyber": ("💠 Cyber Grid", 15),
+           "champion": ("🏆 House Champion", 0)}
 TITLES = {"gladiator": ("Grammar Gladiator", 8), "smith": ("Story Smith", 8),
-          "master": ("Sentence Master", 12), "unstoppable": ("Unstoppable", 20)}
+          "master": ("Sentence Master", 12), "unstoppable": ("Unstoppable", 20),
+          "champion": ("🏆 House Champion", 0)}
 FRAMES = {
     "royal": ("👑 Royal", 10), "frost": ("❄️ Frost", 10), "emerald": ("💚 Emerald", 10),
     "inferno": ("🔥 Inferno", 15), "rainbow": ("🌈 Rainbow", 20),
@@ -184,6 +186,31 @@ COSMETICS = {
 }
 
 TEACHER_ROLES = {"teacher", "admin"}
+
+# ---- timed building upgrades + season rewards (v5)
+UPG_COL = {"nest": "nest_upg", "hatchery": "hatchery_upg", "vault": "vault_upg", "tower": "tower_upg"}
+UPG_HOURS = {"nest": {2: 1, 3: 4, 4: 12, 5: 24}, "hatchery": {1: 1, 2: 6, 3: 12},
+             "vault": {1: 1, 2: 6, 3: 12}, "tower": {1: 1, 2: 6, 3: 12}}   # hours to build each level
+RUSH_HOURS_PER_EGG = 4            # "Finish now" costs 1 Owl Egg per 4 hours left (rounded up)
+
+# Season reward tracks: (key, icon, label, [(value needed, Owl Eggs), ...]). The best tier reached pays out.
+# league / battle tracks use the league INDEX (Silver I = 3 ... ; Raider = 1 ... Legend = 4).
+SEASON_TRACKS = [
+    ("league", "📘", "XP League", [(3, 1), (6, 2), (9, 4), (12, 6), (15, 8), (18, 11), (21, 15)]),
+    ("battle", "⚔️", "Attack League", [(1, 2), (2, 4), (3, 7), (4, 12)]),
+    ("raids", "🗡️", "Raids won", [(3, 1), (10, 3), (25, 6)]),
+    ("defends", "🛡️", "Raids defended", [(3, 1), (8, 3), (20, 5)]),
+    ("duels", "🆚", "Duels won", [(2, 1), (6, 3), (12, 6)]),
+    ("stories", "🖋️", "Stories written", [(3, 1), (8, 3), (15, 6)]),
+    ("perfect", "💯", "Perfect quests", [(3, 1), (10, 3), (25, 6)]),
+    ("builder", "🏗️", "Base upgrades", [(1, 1), (3, 3), (6, 6)]),
+]
+ALLROUND_MIN, ALLROUND_EGGS = 5, 3          # earn a reward in 5+ tracks -> bonus eggs
+SEASON_METRIC_COLS = {"raids": "attacks_won", "defends": "defends_won", "duels": "duels_won",
+                      "stories": "writings_done", "perfect": "perfect_count"}
+HOUSE_REWARDS = {1: 12, 2: 5, 3: 2}         # Owl Eggs for EVERY qualifying member of the 1st / 2nd / 3rd house
+HOUSE_MIN_XP = 100                          # season XP a member needs to share the house reward
+HOUSE_KEY = "champion"                      # exclusive title + banner for the winning house
 
 FAMILIES = ["bronze", "silver", "gold", "crystal", "master", "champion", "titan"]
 ROMAN = ["I", "II", "III"]
@@ -227,6 +254,9 @@ USER_COLS = (
     # Clash of Nests: Owl XP, buildings, cosmetics, integrity notes
     "owl_xp", "hatchery_level", "vault_level", "tower_level", "hatch_pending", "hatch_anchor",
     "name_glow", "glows_owned", "banner", "banners_owned", "title", "titles_owned", "academic_notes",
+    # v5: timed upgrades, season rewards, records
+    "duels_won", "owl_banked", "season_base", "season_pending", "best_xp", "best_xp_season",
+    "best_owl", "best_owl_season", "house_cups", "nest_upg", "hatchery_upg", "vault_upg", "tower_upg",
 )
 Q_COLS = (
     "id", "week", "question", "option_a", "option_b", "option_c", "option_d",
@@ -273,6 +303,19 @@ def esc_nl(s) -> str:
 def ui(markup: str) -> None:
     flat = "\n".join(line.strip() for line in markup.strip().splitlines() if line.strip())
     st.markdown(flat, unsafe_allow_html=True)
+
+
+def _dialog(title: str):
+    """Pop-up window (st.dialog). Very old Streamlit falls back to an inline bordered box."""
+    def deco(fn):
+        if hasattr(st, "dialog"):
+            return st.dialog(title)(fn)
+
+        def inline(*a, **k):
+            with st.container(border=True):
+                fn(*a, **k)
+        return inline
+    return deco
 
 
 def to_int(v, default=0) -> int:
@@ -905,6 +948,16 @@ def sync_me() -> None:
         me.update(xp=to_int(r.get("xp")), name=r.get("display_name") or me["username"],
                   bio=r.get("bio", "") or "", role=(r.get("role", "") or "").strip().lower())
         me["class"] = (r.get("class", "") or "").strip()
+        fx = settle_fields(r)
+        if fx:
+            try:
+                modify_user(me["username"], lambda cur: settle_fields(cur))
+                done = [f"{BLD_INFO[k][1]} Lv.{fx[BLD_COL[k]]}" for k in BLD_COL if BLD_COL[k] in fx]
+                if done:
+                    st.session_state.flash_ok = "🏗️ Upgrade finished: " + ", ".join(done) + "!"
+                    sfx("levelup")
+            except Exception as e:
+                log.warning("settle upgrades failed: %s", type(e).__name__)
 
 
 def compute_achievements(cur: dict, extra=None) -> set:
@@ -1557,7 +1610,12 @@ def lb_row(rank: int, r, mine: bool) -> str:
     if to_int(r.get("internal_xp")):
         chips += f'<span class="chip chip-prestige">⭐ P{to_int(r.get("internal_xp"))}</span>'
     bl = battle_league(owl_xp_of(r))
-    chips += f'<span class="chip chip-owl">{BATTLE_LEAGUES[bl][2]} {BATTLE_LEAGUES[bl][1]}</span>'
+    chips += f'<span class="chip chip-owl">{battle_icon(bl, "bl-mini sm")}{BATTLE_LEAGUES[bl][1]}</span>'
+    if to_int(r.get("house_cups")):
+        chips += f'<span class="chip chip-cup">🏆 ×{to_int(r.get("house_cups"))}</span>'
+    rec = records_of(r)
+    best_line = (f'<div class="detail-path"><small>🏅 Best:</small> {esc(LEAGUES[rec["league"]][1])} · '
+                 f'{rec["xp"]:,} XP · {esc(_when(rec["xp_season"]))}</div>') if rec["xp"] > 0 else ""
     if cls:
         chips += f'<span class="chip chip-class">🏫 {esc(cls)}</span>'
     bio = (r.get("bio") or "").strip()
@@ -1571,20 +1629,32 @@ def lb_row(rank: int, r, mine: bool) -> str:
     return (
         f'<details class="lb-row{" me" if mine else ""}{top}">'
         f'<summary class="lb-main">'
-        f'<div class="rank">{medal}{delta}</div>'
+        f'<div class="rank">{medal}{delta}<span class="more-btn" aria-hidden="true">▾</span></div>'
         + avatar(r["username"], name, fam, "", r.get("frame", ""))
         + f'<div class="who"><b>{styled_name(name, r.get("name_glow", ""))}{fire}'
           f'<span class="nest-badge">🏰 Lv.{nest_level(r)}</span></b>{title_tag(r.get("title", ""))}'
           f'<div class="lg-line lg-{fam}">{league_icon(i, 32)}<span>{label}</span></div>'
           f'{bio_html}<div class="chips">{chips}</div></div>'
-          f'<div class="xp-col"><div class="xp">{xp:,}<small>XP</small></div>'
-          f'<span class="more-btn" aria-hidden="true">▾</span></div>'
+          f'<div class="xp-col"><div class="xp">{xp:,}<small>XP</small></div></div>'
           f'</summary>'
           f'<div class="lb-detail"><div class="detail-bio">{full_bio}</div>'
           f'<div class="chips">{badge_full}</div>'
           f'<div class="detail-path"><small>Stories:</small> {stories} · <small>Path:</small> {esc(path)}</div>'
+          f'{best_line}'
           f'</div></details>'
     )
+
+
+def lb_entry(rank: int, r, mine: bool) -> None:
+    """A leaderboard card with two small icons inside it: 👁️ visit base, 🆚 challenge to a duel."""
+    with st.container(key=f"lbr_{rank}"):
+        ui(lb_row(rank, r, mine))
+        if not mine:
+            uname = str(r["username"])
+            if st.button("👁️", key=f"lbv_{rank}", help="Visit this base"):
+                visit_base(uname)
+            if st.button("🆚", key=f"lbc_{rank}", help="Challenge to a duel"):
+                challenge_dialog(uname)
 
 
 def class_scores(df: pd.DataFrame, war=None):
@@ -1636,8 +1706,20 @@ def class_battle_html(df: pd.DataFrame, my_class: str) -> str:
     why = "".join(f'<div>{MEDALS[p - 1] if p <= 3 else "#" + str(p)} {esc(n)} ({esc(c)}) → {esc(c)} gets +{pts}</div>'
                   for p, n, c, pts in reasons) or "<div>No class players in the top 10 yet.</div>"
     mode_txt = "total XP of all players" if CLASS_SCORE_MODE == "total" else "average XP per player"
+    cup_html = ""
+    if len(scores) >= 2:
+        last = (get_setting("house_cup_last") or "").split("|")
+        last_txt = (f' Last champion: <b>{esc(last[1])}</b> ({esc(season_name(last[0]))}).'
+                    if len(last) == 2 and last[1] else "")
+        cup_html = (
+            f'<div class="cup-box">{art("house_cup", "🏆", "art cup-art")}<div>'
+            f'<b>🏆 House Cup · {esc(season_name(season_key()))}</b>'
+            f'<small>If your house wins, EVERY member gets 🥚 {HOUSE_REWARDS[1]} + the exclusive '
+            f'<b>House Champion</b> title and banner. 2nd house: 🥚 {HOUSE_REWARDS[2]}, 3rd: 🥚 {HOUSE_REWARDS[3]}. '
+            f'Earn {HOUSE_MIN_XP}+ XP to qualify.</small>'
+            f'<small>Leading now: <b>{esc(scores[0]["name"])}</b>.{last_txt}</small></div></div>')
     return (
-        '<div class="glass class-card"><h3>🏫 Class Battle</h3>' + rows +
+        '<div class="glass class-card"><h3>🏫 Class Battle</h3>' + cup_html + rows +
         '<details class="cls-why"><summary>❓ Why do classes get bonus points?</summary>'
         f'<p>Class score = {mode_txt} + bonus points. When a player finishes in the Top 10 '
         f'of the leaderboard, their class earns bonus points: {scale}. Attacking another house earns ⚔️ war points '
@@ -1692,7 +1774,7 @@ def page_home():
 
     charges, _ = ink_state(urow)
     eggs, (arrows, _), prestige = to_int(urow.get("owl_eggs")), arrow_state(urow), to_int(urow.get("internal_xp"))
-    season_html = f'<div class="season-chip">🗓️ Season ends in {days_left_in_season()}d</div>'
+    season_html = f'<div class="season-chip">🗓️ {esc(season_name(season_key()))} · {days_left_in_season()}d left</div>'
     ink_banner = ""
     if charges > 0:
         ink_banner = (f'<div class="ink-banner">🖋️ {charges} Ink Charge{"s" if charges != 1 else ""} ready</div>')
@@ -1703,12 +1785,12 @@ def page_home():
 
     # --- main player card (edit button lives INSIDE the card)
     with st.container(key="homecard"):
+        my_base(urow, "home")
         ui(f'''
-        {nest_scene_html(urow)}
         <div class="stats">
           <div class="stat"><b>{xp:,}</b><span>XP</span></div>
           <div class="stat"><b>#{pos + 1 if pos is not None else "-"}</b><span>Rank</span></div>
-          <div class="stat"><b>{eggs}</b><span>Owl Eggs 🥚</span></div>
+          <div class="stat"><b>{eggs}</b><span>Eggs 🥚</span></div>
           <div class="stat"><b>{arrows}</b><span>Arrows 🏹</span></div>
         </div>
         <div class="bar"><i style="width:{pct}%"></i></div>
@@ -1731,7 +1813,7 @@ def page_home():
         st.button("📌 Start assigned quest", key="assign_start", on_click=start_quest, args=("assign",))
 
     try:
-        new_season_card(me)
+        season_popup(urow)
         inc = incoming_duels(me["username"])
         if inc:
             ui(f'<div class="glass notice duel-alert">📩 <b>Challenge Alert!</b> {len(inc)} classmate'
@@ -1764,17 +1846,12 @@ def page_home():
         log.warning("class battle failed: %s", type(e).__name__)
 
     ui('<div class="glass lb-card"><h3>🏆 Leaderboard</h3></div>')
-    rows_html = ""
-    for i, r in df.head(min(BOARD_SIZE, len(df))).iterrows():
-        rows_html += lb_row(i + 1, r, pos is not None and i == pos)
-    if pos is not None and pos >= BOARD_SIZE:
-        rows_html += '<div class="gap">• • •</div>' + lb_row(pos + 1, row, True)
-    if rows_html:
-        ui(f'<div class="lb-list">{rows_html}</div>')
-    try:
-        visit_picker(df)
-    except Exception as e:
-        log.warning("visit picker failed: %s", type(e).__name__)
+    with st.container(key="lblist"):
+        for i, r in df.head(min(BOARD_SIZE, len(df))).iterrows():
+            lb_entry(i + 1, r, pos is not None and i == pos)
+        if pos is not None and pos >= BOARD_SIZE:
+            ui('<div class="gap">• • •</div>')
+            lb_entry(pos + 1, row, True)
 
 
 # ----------------------------------------------------------------- quest
@@ -2190,16 +2267,12 @@ def page_profile():
     if to_int(row.get("internal_xp")):
         cls_chip += f'<span class="chip chip-prestige">⭐ Prestige {to_int(row.get("internal_xp"))}</span>'
 
-    ui(f'''
-    <div class="glass hero profile-card">
-      {nest_scene_html(row)}
-      <div class="bio-box">{esc_nl(bio) if bio else "<i>No bio yet</i>"}</div>
-    </div>
-    ''')
+    my_base(row, "prof")
+    ui(f'<div class="bio-box prof-bio">{esc_nl(bio) if bio else "<i>No bio yet</i>"}</div>')
 
     tab = st.radio(
         "Profile menu",
-        ["Achievements", "Battle record", "Edit profile", "Change password"],
+        ["Achievements", "Records", "Battle record", "Edit profile", "Change password"],
         horizontal=True,
         label_visibility="collapsed",
         key="profile_menu",
@@ -2211,6 +2284,9 @@ def page_profile():
         if old:
             ui('<div class="glass"><h3>🏛️ Founder badges</h3><div class="chips">'
                + "".join(f'<span class="chip">{esc(b)}</span>' for b in old) + '</div></div>')
+
+    elif tab == "Records":
+        ui(f'<div class="glass">{records_html(row)}</div>')
 
     elif tab == "Battle record":
         render_battle_record(row)
@@ -2741,40 +2817,212 @@ def prestige_info(row: dict) -> dict:
             "progress": pot % XP_PER_PRESTIGE}
 
 
+def season_name(key: str) -> str:
+    """'2026-01' -> 'January Season'."""
+    try:
+        return datetime.strptime(str(key).strip(), "%Y-%m").strftime("%B") + " Season"
+    except ValueError:
+        return "Season"
+
+
+def season_month_year(key: str) -> str:
+    try:
+        return datetime.strptime(str(key).strip(), "%Y-%m").strftime("%B %Y")
+    except ValueError:
+        return "-"
+
+
+def lifetime_counts(row) -> dict:
+    out = {k: to_int(row.get(c)) for k, c in SEASON_METRIC_COLS.items()}
+    out["builder"] = max(0, sum(bld_level(row, k) for k in BLD_COL) - 1)       # nest starts at Lv.1
+    return out
+
+
+def parse_base(s) -> dict:
+    out = {}
+    for part in str(s or "").split(";"):
+        k, _, v = part.partition("=")
+        if k.strip() and v.strip().lstrip("-").isdigit():
+            out[k.strip()] = int(v)
+    return out
+
+
+def base_str(row) -> str:
+    return ";".join(f"{k}={v}" for k, v in lifetime_counts(row).items())
+
+
+def season_metrics(row) -> dict:
+    """This season's progress = lifetime counters now minus the snapshot taken when the season began.
+    (First season after the update: no snapshot yet, so everything done so far counts, once.)"""
+    base = parse_base(row.get("season_base"))
+    m = {k: max(0, v - base.get(k, 0)) for k, v in lifetime_counts(row).items()}
+    m["league"] = league_of(to_int(row.get("xp")))
+    m["battle"] = battle_league(owl_xp_of(row))
+    return m
+
+
+def track_text(key: str, v: int) -> str:
+    if key == "league":
+        return LEAGUES[max(0, min(len(LEAGUES) - 1, v))][1]
+    if key == "battle":
+        return BATTLE_LEAGUES[max(0, min(len(BATTLE_LEAGUES) - 1, v))][1]
+    return str(v)
+
+
+def season_rewards(row, rank=None) -> dict:
+    """What the player would earn if the season ended right now."""
+    m = season_metrics(row)
+    lines, total, hit = [], 0, 0
+    for key, icon, label, tiers in SEASON_TRACKS:
+        got, prev, nxt = 0, 0, None
+        for need, eggs in tiers:
+            if m[key] >= need:
+                got, prev = eggs, need
+            elif nxt is None:
+                nxt = (need, eggs)
+        pct = 100 if nxt is None else int((m[key] - prev) / max(1, nxt[0] - prev) * 100)
+        lines.append({"key": key, "icon": icon, "label": label, "value": m[key], "eggs": got,
+                      "next": nxt, "pct": max(0, min(100, pct))})
+        total += got
+        hit += 1 if got > 0 else 0
+    allround = ALLROUND_EGGS if hit >= ALLROUND_MIN else 0
+    rank_eggs = (SEASON_TOP_EGGS[rank - 1]
+                 if rank and rank <= len(SEASON_TOP_EGGS) and to_int(row.get("xp")) > 0 else 0)
+    return {"lines": lines, "hit": hit, "allround": allround, "rank_eggs": rank_eggs,
+            "total": total + allround + rank_eggs, "metrics": m}
+
+
+def parse_pending(row) -> dict:
+    try:
+        d = json.loads((row.get("season_pending") or "").strip() or "{}")
+    except ValueError:
+        return {}
+    return d if isinstance(d, dict) and d.get("season") else {}
+
+
+def claim_fields(cur: dict, pend: dict) -> dict:
+    """Credit a stored season payout (eggs, house cup items) and clear it."""
+    house = pend.get("house") or {}
+    eggs = to_int(pend.get("eggs")) + to_int(house.get("eggs"))
+    fields = {"owl_eggs": to_int(cur.get("owl_eggs")) + eggs, "season_pending": ""}
+    if house.get("champ"):
+        fields["house_cups"] = to_int(cur.get("house_cups")) + 1
+        for kind in ("title", "banner"):
+            have = owned_of(cur, kind)
+            if HOUSE_KEY not in have:
+                have.append(HOUSE_KEY)
+            fields[COSMETICS[kind][2]] = ",".join(have)
+    return fields
+
+
+def build_pending(rd: dict, rank: int, house, ended: str, gain: int, bests: list) -> dict:
+    sr = season_rewards(rd, rank)
+    lines = [[l["icon"], l["label"], track_text(l["key"], l["value"]), l["eggs"]]
+             for l in sr["lines"] if l["eggs"] > 0]
+    if sr["rank_eggs"]:
+        lines.append([MEDALS[rank - 1], f"Season rank #{rank}", "", sr["rank_eggs"]])
+    if sr["allround"]:
+        lines.append(["🌟", "All-rounder bonus", f"{sr['hit']} tracks", sr["allround"]])
+    xp, owl = to_int(rd.get("xp")), owl_xp_of(rd)
+    return {"season": ended, "rank": rank, "xp": xp, "league": league_of(xp), "owl": owl,
+            "battle": battle_league(owl), "lines": lines, "eggs": sum(l[3] for l in lines),
+            "house": house, "prestige": gain, "bests": bests}
+
+
+def records_of(row) -> dict:
+    """All-time bests (saved at every season end) compared with the season in progress."""
+    key = season_key()
+    bx, bxs = to_int(row.get("best_xp")), str(row.get("best_xp_season") or "")
+    bo, bos = to_int(row.get("best_owl")), str(row.get("best_owl_season") or "")
+    xp, owl = to_int(row.get("xp")), owl_xp_of(row)
+    if xp > bx:
+        bx, bxs = xp, key
+    if owl > bo:
+        bo, bos = owl, key
+    return {"xp": bx, "xp_season": bxs, "league": league_of(bx),
+            "owl": bo, "owl_season": bos, "battle": battle_league(bo)}
+
+
+def _when(key: str) -> str:
+    if not key:
+        return "-"
+    return season_month_year(key) + (" · now" if key == season_key() else "")
+
+
+def records_html(row) -> str:
+    rec = records_of(row)
+    if rec["xp"] <= 0 and rec["owl"] <= 0:
+        return '<div class="records"><h3>🏅 Personal records</h3><div class="rec-empty">No records yet. Finish a season to set one!</div></div>'
+    cups = to_int(row.get("house_cups"))
+    cup = f'<div class="rec-cups">🏆 House Cup winner × {cups}</div>' if cups else ""
+    return (
+        '<div class="records"><h3>🏅 Personal records</h3><div class="rec-grid">'
+        f'<div class="rec">{league_icon(rec["league"], 64, "lg-ico rec-ico")}<b>{esc(LEAGUES[rec["league"]][1])}</b>'
+        f'<small>Best league</small><em>{esc(_when(rec["xp_season"]))}</em></div>'
+        f'<div class="rec"><span class="rec-ico emoji">⭐</span><b>{rec["xp"]:,}</b>'
+        f'<small>Best season XP</small><em>{esc(_when(rec["xp_season"]))}</em></div>'
+        f'<div class="rec">{battle_icon(rec["battle"], "bl-rec")}<b>{esc(BATTLE_LEAGUES[rec["battle"]][1])}</b>'
+        f'<small>Best attack league</small><em>{esc(_when(rec["owl_season"]))}</em></div>'
+        f'</div>{cup}</div>'
+    )
+
+
 def _run_season_reset(ended: str, new_key: str, force: bool = False) -> None:
-    """Pay season rewards, save the Hall of Fame, bank XP into Prestige, reset XP + leagues."""
+    """Prepare season rewards (claimed by each player), save the Hall of Fame and records,
+    bank XP into Prestige, reset XP + leagues + attack leagues."""
     df = read_tab("users", force=True, strict=True)
     stu = df[(df["username"].str.strip() != "")
              & ~df["role"].str.strip().str.lower().isin(TEACHER_ROLES)].copy()
     stu["_xp"] = stu["xp"].map(to_int)
     stu = stu.sort_values("_xp", ascending=False, kind="stable")
+    scores, _ = class_scores(stu.assign(xp=stu["_xp"]), war_points(ended))
+    house_rank = {c["name"]: i + 1 for i, c in enumerate(scores)}
+    cup = len(scores) >= 2
     changes, hof = {}, []
     for pos, (_, r) in enumerate(stu.iterrows(), start=1):
-        xp = int(r["_xp"])
+        rd = r.to_dict()
+        xp = int(rd["_xp"])
+        owl = owl_xp_of(rd)
         lg = league_of(xp)
-        eggs = 0
-        if xp > 0:
-            eggs += SEASON_TOP_EGGS[pos - 1] if pos <= len(SEASON_TOP_EGGS) else 0
-            eggs += lg // SEASON_LEAGUE_DIV
-        banked = to_int(r["banked_xp"]) + xp
+        banked = to_int(rd["banked_xp"]) + xp
         gain = banked // XP_PER_PRESTIGE
-        changes[int(r["_row"])] = {
+        old = parse_pending(rd)                       # unclaimed rewards from last time: pay them now
+        fields = claim_fields(rd, old) if old else {}
+        house, cls = None, (rd.get("class") or "").strip()
+        if cup and house_rank.get(cls, 99) <= len(HOUSE_REWARDS) and xp >= HOUSE_MIN_XP:
+            hr = house_rank[cls]
+            house = {"cls": cls, "rank": hr, "eggs": HOUSE_REWARDS[hr], "champ": hr == 1}
+        bests = []
+        if xp > to_int(rd.get("best_xp")):
+            fields.update(best_xp=xp, best_xp_season=ended)
+            bests.append("xp")
+        if owl > to_int(rd.get("best_owl")):
+            fields.update(best_owl=owl, best_owl_season=ended)
+            bests.append("owl")
+        pend = build_pending(rd, pos, house, ended, gain, bests)
+        fields.update({
             "xp": 0, "badges": LEAGUES[0][1], "answered": "", "last_rank": "",
-            "owl_eggs": to_int(r["owl_eggs"]) + eggs,
-            "internal_xp": to_int(r["internal_xp"]) + gain,
+            "internal_xp": to_int(rd["internal_xp"]) + gain,
             "banked_xp": banked % XP_PER_PRESTIGE, "season": new_key,
-        }
+            "season_base": base_str(rd),
+            "season_pending": (json.dumps(pend, separators=(",", ":"))
+                               if (pend["eggs"] or house or xp > 0) else ""),
+        })
         if OWL_XP_RESETS_MONTHLY:
-            changes[int(r["_row"])]["owl_xp"] = 0
-        hof.append({"season": ended, "rank": pos, "username": r["username"],
-                    "display_name": r["display_name"] or r["username"], "class": r["class"].strip(),
-                    "xp": xp, "league": LEAGUES[lg][1], "eggs": eggs, "prestige_gain": gain})
+            fields.update(owl_xp=0, owl_banked=to_int(rd.get("owl_banked")) + owl)
+        changes[int(rd["_row"])] = fields
+        hof.append({"season": ended, "rank": pos, "username": rd["username"],
+                    "display_name": rd["display_name"] or rd["username"], "class": cls,
+                    "xp": xp, "league": LEAGUES[lg][1],
+                    "eggs": pend["eggs"] + to_int((house or {}).get("eggs")), "prestige_gain": gain})
     today = datetime.now(TZ).date().isoformat()
     if changes:
-        old = read_tab("hall_of_fame", force=True)
-        if force or old[old["season"] == ended].empty:       # skip if a half-finished reset already saved it
-            append_rows_tab("hall_of_fame", hof)             # history first, so it is never lost
+        old_hof = read_tab("hall_of_fame", force=True)
+        if force or old_hof[old_hof["season"] == ended].empty:    # skip if a half-finished reset already saved it
+            append_rows_tab("hall_of_fame", hof)                  # history first, so it is never lost
         bulk_update("users", changes)
+    if cup and scores:
+        set_setting("house_cup_last", f"{ended}|{scores[0]['name']}")
     set_setting("season", new_key)
     set_setting("season_last", ended)
     set_setting("season_reset_on", today)
@@ -2811,36 +3059,79 @@ def maybe_season_reset(force: bool = False) -> bool:
             return False
 
 
-def new_season_card(me: dict) -> None:
-    """After a reset, show last season's result for a few days (until the player taps the button)."""
-    if st.session_state.get("ns_hidden"):
+def claim_season_rewards() -> None:
+    out = {}
+
+    def fn(cur):
+        pend = parse_pending(cur)
+        if not pend:
+            raise ShopError("Nothing to claim right now.")
+        out["eggs"] = to_int(pend.get("eggs")) + to_int((pend.get("house") or {}).get("eggs"))
+        return claim_fields(cur, pend)
+
+    _shop_call(fn, "🎁 Season rewards claimed!", "victory")
+    if out.get("eggs") and "flash_ok" in st.session_state:
+        st.session_state.flash_ok = f"🎁 Season rewards claimed: +{out['eggs']} Owl Eggs!"
+
+
+def _season_end_body() -> None:
+    me = st.session_state.user
+    row = user_row(me["username"])
+    pend = parse_pending(row)
+    if not pend:
+        st.write("All rewards are claimed. Good luck this season! 🚀")
         return
-    try:
-        on = date.fromisoformat(get_setting("season_reset_on").strip())
-    except ValueError:
-        return
-    if (datetime.now(TZ).date() - on).days > 3:
-        return
-    last = get_setting("season_last").strip()
-    hof = read_tab("hall_of_fame")
-    mine = hof[(hof["season"] == last) & (hof["username"].str.lower() == me["username"].lower())]
-    if mine.empty:
-        return
-    r = mine.iloc[-1]
+    rows = "".join(
+        f'<div class="bank-row got"><span class="bi">{esc(l[0])}</span><div class="bm"><b>{esc(l[1])}</b>'
+        f'<small>{esc(l[2])}</small></div><span class="be">+{to_int(l[3])} 🥚</span></div>'
+        for l in pend.get("lines", [])) or '<div class="rec-empty">Play more next season to earn rewards!</div>'
+    house = pend.get("house")
+    house_html = ""
+    if house:
+        extra = (" + the exclusive <b>House Champion</b> title and banner! 🔥" if house.get("champ") else "")
+        house_html = (f'<div class="house-box won">{art("house_cup", "🏆", "art cup-art")}'
+                      f'<h3>{MEDALS[house["rank"] - 1]} House {esc(house["cls"])} placed #{house["rank"]}</h3>'
+                      f'<small>Everyone in your house gets 🥚 +{to_int(house["eggs"])}{extra}</small></div>')
+    bests = ""
+    if pend.get("bests"):
+        bests = '<div class="new-best">🏅 New personal best! Check your Records tab.</div>'
+    total = to_int(pend.get("eggs")) + to_int((house or {}).get("eggs"))
+    li, bl = to_int(pend.get("league")), to_int(pend.get("battle"))
     ui(f'''
-    <div class="glass hero celebrate">
-      {anim("season_new", "🎆")}
-      <h2>New season!</h2>
-      <p class="tagline">{esc(last)}: you finished #{esc(r["rank"])} in {esc(r["league"])} with {to_int(r["xp"]):,} XP</p>
-      <div class="bonus"><div>🥚 +{to_int(r["eggs"])} Owl Eggs</div><div>⭐ +{to_int(r["prestige_gain"])} Prestige</div>
-      <div>Everyone starts again from Bronze I. Good luck!</div></div>
+    <div class="season-end">
+      {anim("season_end", "🏆")}
+      <h2>{esc(season_name(pend["season"]))} is over!</h2>
+      <p class="tagline">You finished <b>#{to_int(pend["rank"])}</b> with {to_int(pend["xp"]):,} XP</p>
+      <div class="se-badges">
+        <div>{league_icon(li, 96, "lg-ico pc")}<small>{esc(LEAGUES[li][1])}</small></div>
+        <div>{battle_icon(bl, "bl-rec")}<small>{esc(BATTLE_LEAGUES[bl][1])}</small></div>
+      </div>
+      {bests}
     </div>
+    <div class="bank-list">{rows}</div>
+    {house_html}
+    <div class="bank-total">🥚 +{total}<span>Owl Eggs waiting for you</span></div>
+    <small class="se-note">New season: XP and leagues start again. Your Prestige (+{to_int(pend.get("prestige"))}), buildings and records stay forever.</small>
     ''')
+    if st.button("🎁 Claim my rewards", key="ss_claim"):
+        claim_season_rewards()
+        st.rerun()
 
-    def hide():
-        st.session_state.ns_hidden = True
 
-    st.button("🚀 Let's go!", key="ns_close", on_click=hide)
+season_end_dialog = _dialog("Season complete 🏆")(_season_end_body)
+
+
+def season_popup(urow: dict) -> None:
+    """One-time pop-up after a season ends (until the player claims). A banner stays until claimed."""
+    pend = parse_pending(urow)
+    if not pend:
+        return
+    ui(f'<div class="glass notice season-wait">🎁 <b>{esc(season_name(pend["season"]))} rewards</b> are waiting for you!</div>')
+    if st.session_state.get("ss_shown") != pend["season"]:
+        st.session_state.ss_shown = pend["season"]
+        season_end_dialog()
+    elif st.button("🎁 Open season rewards", key="ss_open"):
+        season_end_dialog()
 
 
 def hall_of_fame_html() -> str:
@@ -2856,7 +3147,7 @@ def hall_of_fame_html() -> str:
         f'<div class="hof-row">{MEDALS[i]} <b>{esc(r["display_name"])}</b>'
         f'<small>{esc(r["class"])}</small><span>{to_int(r["xp"]):,} XP</span></div>'
         for i, (_, r) in enumerate(top.iterrows()))
-    return f'<div class="glass"><h3>🏛️ Hall of Fame · {esc(last)}</h3>{rows}</div>'
+    return f'<div class="glass"><h3>🏛️ Hall of Fame · {esc(season_name(last))}</h3>{rows}</div>'
 
 
 # ===================================================================== BATTLES (Clash of Nests)
@@ -2898,9 +3189,23 @@ def battle_floor(owl: int) -> int:
     return BATTLE_LEAGUES[battle_league(owl)][0]
 
 
-def bld_level(row, key: str) -> int:
+def stored_level(row, key: str) -> int:
     low = 1 if key == "nest" else 0
     return max(low, min(BLD_MAX[key], to_int(row.get(BLD_COL[key]), low)))
+
+
+def bld_level(row, key: str, now=None) -> int:
+    """Effective level: a finished upgrade counts at once, even before it is written to the sheet."""
+    lvl = stored_level(row, key)
+    end = parse_ts(row.get(UPG_COL[key]))
+    if end is not None and lvl < BLD_MAX[key] and (now or datetime.now(TZ)) >= end:
+        lvl += 1
+    return lvl
+
+
+def lifetime_owl(row) -> int:
+    """Owl XP over all seasons (attack leagues reset monthly, buildings never lose their requirements)."""
+    return to_int(row.get("owl_banked")) + owl_xp_of(row)
 
 
 def nest_level(row) -> int:
@@ -2990,7 +3295,33 @@ def party(row: dict) -> dict:
             "nest": nest_level(row)}
 
 
-def nest_scene_html(row: dict, compact: bool = False) -> str:
+def art_first(names, emoji: str, cls="art") -> str:
+    """First existing PNG from `names` (most specific first), else an emoji."""
+    for n in names:
+        src = pic(IMG_DIR, n, 256, (".png",))
+        if src:
+            return f'<img class="{cls}" src="{src}" alt="">'
+    return f'<span class="{cls} emoji">{emoji}</span>'
+
+
+def bld_art(key: str, lvl: int, cls="art bld-art", building: bool = False) -> str:
+    """Picture for a building at a level: bld_<key>_<lvl>.png -> bld_<key>.png -> emoji.
+    Level 0: bld_plot.png (empty plot); while the first build runs: bld_construct.png."""
+    if key == "nest":
+        return art_first([f"nest_{lvl}"], "🪺", cls)
+    if lvl <= 0:
+        return art_first(["bld_construct"] if building else ["bld_plot"], "🚧" if building else BLD_INFO[key][0], cls)
+    return art_first([f"bld_{key}_{lvl}", f"bld_{key}"], BLD_INFO[key][0], cls)
+
+
+def _prog_html(inf: dict) -> str:
+    """Live progress bar: CSS fills it from the current % to 100% over the time left (no reruns needed)."""
+    secs = max(1, int(inf["left"].total_seconds()))
+    return (f'<div class="bld-prog"><i style="--from:{inf["pct"]}%;--dur:{secs}s"></i></div>'
+            f'<span class="bld-left">🔨 {fmt_td(inf["left"])}</span>')
+
+
+def nest_scene_html(row: dict, compact: bool = False, own: bool = True) -> str:
     """Player banner + avatar + nest + buildings. Used on Home, Nest Hub, Profile, Shop preview, Visit Base."""
     uname = (row.get("username") or "").strip()
     name = row.get("display_name") or uname
@@ -3005,29 +3336,43 @@ def nest_scene_html(row: dict, compact: bool = False) -> str:
         chips += f'<span class="chip chip-class">🏫 {esc(cls)}</span>'
     if to_int(row.get("internal_xp")):
         chips += f'<span class="chip chip-prestige">⭐ Prestige {to_int(row.get("internal_xp"))}</span>'
-    chips += f'<span class="chip chip-owl">{BATTLE_LEAGUES[bl][2]} {BATTLE_LEAGUES[bl][1]}</span>'
+    if to_int(row.get("house_cups")):
+        chips += f'<span class="chip chip-cup">🏆 ×{to_int(row.get("house_cups"))}</span>'
     head = (
         f'<div class="scene-top pc-head">'
         f'{avatar(uname, name, fam, "pc", row.get("frame", ""))}'
         f'<div class="scene-mid"><div class="scene-name">{styled_name(name, row.get("name_glow", ""))}</div>'
         f'{title_tag(row.get("title", ""))}'
         f'<p class="tier">{label} · {xp:,} XP</p><div class="chips">{chips}</div></div>'
-        f'{league_icon(li, 96, "lg-ico pc")}</div>'
+        f'<div class="scene-badges">{league_icon(li, 96, "lg-ico pc")}'
+        f'<div class="bl-line">{battle_icon(bl, "bl-mini")}<small>{BATTLE_LEAGUES[bl][1]}</small></div></div></div>'
     )
     bclass = f" banner-{banner}" if banner in BANNERS else ""
     wrap = f'<div class="scene{bclass} lg-{fam}" style="{banner_style(banner)}">'
     if compact:
         return wrap + head + "</div>"
-    nl = nest_level(row)
+    now = datetime.now(TZ)
+    nl, nmax, ninf = nest_level(row), nest_level(row) >= BLD_MAX["nest"], upg_info(row, "nest", now)
+    nest_html = (
+        f'<div class="scene-nest lvl{nl}{" max" if nmax else ""}">'
+        f'<div class="nest-wrap">{bld_art("nest", nl, "art nest-art")}</div>'
+        f'<small>🪺 Owl Nest Lv.{nl}{" · MAX ⭐" if nmax else ""}</small>'
+        + (f'<div class="nest-up">{_prog_html(ninf)}</div>' if ninf else "") + '</div>')
     tiles = ""
     for key in ("hatchery", "vault", "tower"):
-        lvl = bld_level(row, key)
+        lvl, inf = bld_level(row, key, now), upg_info(row, key, now)
+        mx = lvl >= BLD_MAX[key]
         icon, short, _ = BLD_INFO[key]
-        tiles += (f'<div class="bld{"" if lvl else " off"}">{art("bld_" + key, icon, "art bld-art")}'
-                  f'<small>{esc(short)}<br>{"Lv." + str(lvl) if lvl else "🔒 not built"}</small></div>')
-    body = (f'<div class="scene-nest">{art("nest_" + str(nl), "🪺", "art nest-art")}'
-            f'<small>🪺 Owl Nest Lv.{nl}</small></div><div class="bld-row">{tiles}</div>')
-    return wrap + head + body + "</div>"
+        if inf:
+            sub = f'Lv.{lvl}→{inf["target"]}{_prog_html(inf)}' if lvl else f'Building…{_prog_html(inf)}'
+        elif lvl == 0:
+            sub = "🔒 tap to build" if own else "🔒 not built"
+        else:
+            sub = "⭐ MAX" if mx else f"Lv.{lvl}"
+        cls_ = "bld" + (" off" if lvl == 0 and not inf else "") + (" max" if mx else "") + (" up" if inf else "")
+        tiles += (f'<div class="{cls_}">{bld_art(key, lvl, "art bld-art", bool(inf))}'
+                  f'<small><b>{esc(short)}</b><br>{sub}</small></div>')
+    return wrap + head + nest_html + f'<div class="bld-row">{tiles}</div></div>'
 
 
 # ---- battle stage (face-to-face, wall by wall)
@@ -3134,14 +3479,14 @@ def eligible_targets(mine: dict, log_df, now) -> list:
     return out
 
 
-def war_points() -> dict:
+def war_points(prefix: str = "") -> dict:
     """Class Battle points from cross-house attacks this season."""
     out = {}
     try:
         log_df = read_tab("battles")
     except Exception:
         return out
-    prefix = season_key()
+    prefix = prefix or season_key()
     for _, r in log_df.iterrows():
         if not str(r["time"]).startswith(prefix):
             continue
@@ -3516,7 +3861,7 @@ def _duel_winner_fields(cur: dict) -> dict:
     xp = to_int(cur.get("xp")) + DUEL_WIN_XP
     return {"xp": xp, "badges": LEAGUES[league_of(xp)][1],
             "owl_eggs": to_int(cur.get("owl_eggs")) + DUEL_WIN_EGGS,
-            "owl_xp": owl_xp_of(cur) + DUEL_WIN_OWL}
+            "owl_xp": owl_xp_of(cur) + DUEL_WIN_OWL, "duels_won": to_int(cur.get("duels_won")) + 1}
 
 
 def _duel_loser_fields(cur: dict) -> dict:
@@ -3630,7 +3975,7 @@ def bld_reqs(row: dict, key: str):
     if lvl >= BLD_MAX[key]:
         return None
     nxt, reqs, eggs = lvl + 1, [], 0
-    life, owl = lifetime_xp(row), owl_xp_of(row)
+    life, owl = lifetime_xp(row), lifetime_owl(row)
     if key == "nest":
         need_xp, eggs = TOWN_REQ[nxt]
         have = to_int(row.get("owl_eggs"))
@@ -3640,7 +3985,7 @@ def bld_reqs(row: dict, key: str):
     reqs.append((f"🪺 Owl Nest Lv.{nxt}", nest_level(row) >= nxt))
     if key in ("hatchery", "tower"):
         need = (HATCH_REQ if key == "hatchery" else TOWER_REQ)[nxt]
-        reqs.append((f"🦉 {need} Owl XP (you: {owl})", owl >= need))
+        reqs.append((f"🦉 {need} Owl XP earned in total (you: {owl})", owl >= need))
     else:
         need_xp, need_st = VAULT_REQ[nxt]
         done = to_int(row.get("writings_done"))
@@ -3649,24 +3994,97 @@ def bld_reqs(row: dict, key: str):
     return nxt, reqs, 0
 
 
+# ---- timed upgrades: the level only goes up when the timer ends (checked lazily, no cron job)
+def upg_info(row: dict, key: str, now=None):
+    """Running upgrade -> dict(target, end, left, total, pct); None if nothing is running."""
+    now = now or datetime.now(TZ)
+    end = parse_ts(row.get(UPG_COL[key]))
+    lvl = stored_level(row, key)
+    if end is None or lvl >= BLD_MAX[key] or now >= end:
+        return None
+    total = timedelta(hours=UPG_HOURS[key][lvl + 1])
+    left = end - now
+    secs = total.total_seconds()
+    pct = max(0, min(99, int((1 - left.total_seconds() / secs) * 100))) if secs > 0 else 99
+    return {"target": lvl + 1, "end": end, "left": left, "total": total, "pct": pct}
+
+
+def _finish_fields(key: str, lvl: int, at) -> dict:
+    f = {BLD_COL[key]: lvl, UPG_COL[key]: ""}
+    if key == "hatchery" and lvl == 1:
+        f.update(hatch_pending=0, hatch_anchor=at.isoformat(timespec="seconds"))
+    return f
+
+
+def settle_fields(cur: dict, now=None) -> dict:
+    """Fields that write every finished upgrade into the sheet ({} when nothing finished)."""
+    now = now or datetime.now(TZ)
+    out = {}
+    for key, col in UPG_COL.items():
+        end = parse_ts(cur.get(col))
+        if end is None:
+            if (cur.get(col) or "").strip():
+                out[col] = ""
+            continue
+        if now >= end:
+            out.update(_finish_fields(key, min(BLD_MAX[key], stored_level(cur, key) + 1), end))
+    return out
+
+
+def upgrades_instant() -> bool:
+    try:
+        return get_setting("upgrade_instant").strip().upper() == "TRUE"
+    except Exception:
+        return False
+
+
+def rush_cost(left) -> int:
+    return max(1, math.ceil(left.total_seconds() / 3600 / RUSH_HOURS_PER_EGG))
+
+
 def upgrade_building(key: str) -> None:
     now = datetime.now(TZ)
+    instant = upgrades_instant()
 
     def fn(cur):
-        info = bld_reqs(cur, key)
+        fields = settle_fields(cur, now)
+        merged = {**cur, **fields}
+        if upg_info(merged, key, now):
+            raise ShopError("This building is already being upgraded.")
+        info = bld_reqs(merged, key)
         if info is None:
             raise ShopError("This building is already at the top level.")
         nxt, reqs, eggs = info
         if not all(ok for _, ok in reqs):
             raise ShopError("You don't meet every requirement yet.")
-        fields = {BLD_COL[key]: nxt}
+        if instant:
+            fields.update(_finish_fields(key, nxt, now))
+        else:
+            fields[UPG_COL[key]] = (now + timedelta(hours=UPG_HOURS[key][nxt])).isoformat(timespec="seconds")
         if eggs:
             fields["owl_eggs"] = to_int(cur.get("owl_eggs")) - eggs
-        if key == "hatchery" and nxt == 1:
-            fields.update(hatch_pending=0, hatch_anchor=now.isoformat(timespec="seconds"))
         return fields
 
-    _shop_call(fn, f"{BLD_INFO[key][0]} {BLD_INFO[key][1]} upgraded!", "levelup")
+    _shop_call(fn, f"🔨 {BLD_INFO[key][1]}: upgrade started!", "levelup")
+
+
+def rush_upgrade(key: str) -> None:
+    now = datetime.now(TZ)
+
+    def fn(cur):
+        fields = settle_fields(cur, now)
+        merged = {**cur, **fields}
+        inf = upg_info(merged, key, now)
+        if not inf:
+            raise ShopError("Nothing is being upgraded here.")
+        cost, have = rush_cost(inf["left"]), to_int(cur.get("owl_eggs"))
+        if have < cost:
+            raise ShopError(f"You need {cost} Owl Eggs to finish now.")
+        fields.update(_finish_fields(key, inf["target"], now))
+        fields["owl_eggs"] = have - cost
+        return fields
+
+    _shop_call(fn, f"⚡ {BLD_INFO[key][1]} finished!", "levelup")
 
 
 def hatch_state(row: dict, now=None):
@@ -3698,62 +4116,200 @@ def collect_hatchery() -> None:
     _shop_call(fn, "🥚 Egg collected!", "egg_drop")
 
 
+def bld_effect(key: str, lvl: int) -> str:
+    if key == "nest":
+        return f"🧱 {WALLS_BASE + lvl} walls from the nest"
+    if key == "hatchery":
+        return "not built yet" if lvl <= 0 else f"🥚 1 egg every {HATCH_HOURS[lvl]}h"
+    if key == "vault":
+        return f"🛡️ {SHIELD_AFTER_HIT_H + VAULT_SHIELD_BONUS[lvl]}h shield after a raid"
+    return "not built yet" if lvl <= 0 else f"🗼 +{TOWER_WALLS[lvl]} walls"
+
+
+# ---- pop-up windows opened by tapping things on your own base
+def _bld_body(key: str) -> None:
+    me = st.session_state.user
+    row = user_row(me["username"])
+    icon, name, desc = BLD_INFO[key]
+    lvl, mx = bld_level(row, key), BLD_MAX[key]
+    inf = upg_info(row, key)
+    maxed = lvl >= mx
+    eggs = to_int(row.get("owl_eggs"))
+    pips = "".join(
+        f'<i class="{"on" if i < lvl else ("up" if inf and i == lvl else "")}"></i>' for i in range(mx))
+    ui(f'''
+    <div class="bld-dlg{" max" if maxed else ""}">
+      <div class="bld-big-wrap">{bld_art(key, lvl, "art bld-big", bool(inf))}</div>
+      <h3>{icon} {esc(name)}</h3>
+      <div class="lvl-pips">{pips}</div>
+      <small>Lv.{lvl}/{mx} · {esc(bld_effect(key, lvl))}</small>
+      <p>{esc(desc)}</p>
+    </div>
+    ''')
+    if inf:
+        cost = rush_cost(inf["left"])
+        ui(f'<div class="upg-box"><b>🔨 Upgrading to Lv.{inf["target"]}</b>{_prog_html(inf)}'
+           f'<small>{esc(bld_effect(key, inf["target"]))} when it finishes</small></div>')
+        if st.button(f"⚡ Finish now · {cost} 🥚", key=f"rush_{key}", disabled=eggs < cost):
+            rush_upgrade(key)
+            st.rerun()
+    elif maxed:
+        ui('<div class="req ok">👑 Max level reached! This building is fully upgraded.</div>')
+    else:
+        nxt, reqs, egg_cost = bld_reqs(row, key)
+        hrs = UPG_HOURS[key][nxt]
+        can = all(ok for _, ok in reqs)
+        ui('<div class="upg-box"><div class="req-title">To reach Lv.%d:</div>' % nxt
+           + "".join(f'<div class="req {"ok" if ok else "no"}">{"✅" if ok else "⬜"} {esc(t)}</div>'
+                     for t, ok in reqs)
+           + f'<div class="req">⏱️ Upgrade time: {"instant (test mode)" if upgrades_instant() else str(hrs) + " hours"}</div>'
+           + f'<div class="req">🎁 You get: {esc(bld_effect(key, nxt))}</div></div>')
+        label = "🔨 Build" if lvl == 0 else f"⬆️ Upgrade to Lv.{nxt}"
+        if egg_cost:
+            label += f" · {egg_cost} 🥚"
+        if st.button(label, key=f"start_{key}", disabled=not can):
+            upgrade_building(key)
+            st.rerun()
+    if key == "hatchery" and lvl > 0:
+        n, nxt_t = hatch_state(row)
+        ui(f'<div class="req">🥚 {n} egg{"s" if n != 1 else ""} ready'
+           + ("" if n or nxt_t is None else f" · next in {fmt_td(nxt_t)}") + '</div>')
+        if st.button("🥚 Collect eggs", key="dlg_collect", disabled=n <= 0):
+            collect_hatchery()
+            st.rerun()
+
+
+def _make_bld_dialog(key: str):
+    def body():
+        _bld_body(key)
+    return _dialog(f"{BLD_INFO[key][0]} {BLD_INFO[key][1]}")(body)
+
+
+BLD_DIALOGS = {k: _make_bld_dialog(k) for k in BLD_COL}
+
+
+def _bank_body() -> None:
+    me = st.session_state.user
+    row = user_row(me["username"])
+    df = board_df()
+    hit = df.index[df["username"].str.lower() == me["username"].lower()]
+    rank = int(hit[0]) + 1 if len(hit) else None
+    sr = season_rewards(row, rank)
+    key = season_key()
+    rows = ""
+    for l in sr["lines"]:
+        nxt = l["next"]
+        hint = (f' · next: {esc(track_text(l["key"], nxt[0]))} → +{nxt[1]} 🥚' if nxt else " · top tier!")
+        rows += (f'<div class="bank-row{" got" if l["eggs"] else ""}"><span class="bi">{l["icon"]}</span>'
+                 f'<div class="bm"><b>{esc(l["label"])}</b><small>{esc(track_text(l["key"], l["value"]))}{hint}</small>'
+                 f'<div class="bar sm"><i style="width:{l["pct"]}%"></i></div></div>'
+                 f'<span class="be">{"+" + str(l["eggs"]) + " 🥚" if l["eggs"] else "·"}</span></div>')
+    extra = ""
+    if sr["rank_eggs"]:
+        extra += (f'<div class="bank-row got"><span class="bi">{MEDALS[rank - 1]}</span><div class="bm">'
+                  f'<b>Season rank #{rank}</b><small>Hold your place until the season ends</small></div>'
+                  f'<span class="be">+{sr["rank_eggs"]} 🥚</span></div>')
+    extra += (f'<div class="bank-row{" got" if sr["allround"] else ""}"><span class="bi">🌟</span><div class="bm">'
+              f'<b>All-rounder bonus</b><small>Earn a reward in {ALLROUND_MIN} tracks ({sr["hit"]}/{ALLROUND_MIN})</small>'
+              f'</div><span class="be">{"+" + str(sr["allround"]) + " 🥚" if sr["allround"] else "·"}</span></div>')
+    ui(f'''
+    <div class="bank-hero">
+      {art("season_bank", "🏦", "art bank-art")}
+      <h2>{esc(season_name(key))} Bank</h2>
+      <small>🗓️ {days_left_in_season()} days left. Everything below is paid out when the season ends.</small>
+      <div class="bank-total">🥚 {sr["total"]}<span>Owl Eggs so far</span></div>
+    </div>
+    <div class="bank-list">{rows}{extra}</div>
+    ''')
+    try:
+        scores, _ = class_scores(df, war_points())
+        mycls = (row.get("class") or "").strip()
+        if len(scores) >= 2:
+            lines = ""
+            for i, c in enumerate(scores[:3]):
+                mine = " me" if c["name"].lower() == mycls.lower() else ""
+                lines += (f'<div class="house-row{mine}">{MEDALS[i]} <b>{esc(c["name"])}</b>'
+                          f'<small>{c["score"]:,} pts</small><span>🥚 {HOUSE_REWARDS[i + 1]} each</span></div>')
+            xp = to_int(row.get("xp"))
+            ok = xp >= HOUSE_MIN_XP
+            ui(f'''
+            <div class="house-box">
+              {art("house_cup", "🏆", "art cup-art")}
+              <h3>🏆 House Cup</h3>
+              <small>The winning house gives <b>every member</b> 🥚 {HOUSE_REWARDS[1]} plus the exclusive
+              <b>House Champion</b> title and banner. 2nd place: 🥚 {HOUSE_REWARDS[2]}, 3rd: 🥚 {HOUSE_REWARDS[3]}.</small>
+              {lines}
+              <small class="{"ok" if ok else "no"}">{"✅ You qualify" if ok else "⬜ Not yet"}: you need {HOUSE_MIN_XP} season XP to share it (you have {xp:,}).</small>
+            </div>
+            ''')
+    except Exception as e:
+        log.warning("bank house panel failed: %s", type(e).__name__)
+
+
+season_bank_dialog = _dialog("Season Bank 🎁")(_bank_body)
+
+
+def _challenge_body(uname: str) -> None:
+    me = st.session_state.user
+    target = user_row(uname)
+    if not target:
+        st.write("Player not found.")
+        return
+    nm = target.get("display_name") or uname
+    now = datetime.now(TZ)
+    wait = duel_pair_wait(read_tab("challenges"), me["username"], uname, now)
+    ui(f'''
+    <div class="duel-dlg"><h3>🆚 Challenge {esc(nm)}</h3>
+    <small>You answer {DUEL_Q} questions first. Then {esc(nm)} has 24 hours to match your score.
+    Winner +{DUEL_WIN_XP} XP · {DUEL_WIN_EGGS} 🥚 · {DUEL_WIN_OWL} Owl XP. Free: no arrows, no Owl XP at risk.</small></div>
+    ''')
+    diff_label = {1: "Easy", 2: "Medium", 3: "Hard"}
+    diff = st.radio("Difficulty", [1, 2, 3], format_func=lambda d: diff_label[d], horizontal=True, key="dlg_diff")
+    score = st.slider(f"Target score (out of {DUEL_Q})", 3, DUEL_Q, min(4, DUEL_Q), key="dlg_score")
+    if st.button(f"⏳ Duel again in {fmt_td(wait)}" if wait > timedelta(0) else "🤝 Start duel",
+                 key="dlg_duel_go", disabled=wait > timedelta(0)):
+        st.session_state.duel_target, st.session_state.duel_diff, st.session_state.duel_score = uname, diff, score
+        start_duel()
+        st.rerun()
+
+
+challenge_dialog = _dialog("Duel challenge 🆚")(_challenge_body)
+
+
+# ---- the player's own base: tap the nest / a building / the gift
+def my_base(row: dict, prefix: str) -> None:
+    with st.container(key=f"base_{prefix}"):
+        ui(nest_scene_html(row))
+        if st.button("🎁", key=f"{prefix}_bank", help="Season Bank: what you will earn this season"):
+            season_bank_dialog()
+        for key in BLD_COL:
+            if st.button("·", key=f"{prefix}_bt_{key}", help=f"{BLD_INFO[key][1]}: tap to open"):
+                BLD_DIALOGS[key]()
+
+
 def page_nest() -> None:
     me = st.session_state.user
     row = user_row(me["username"])
-    ui(f'<div class="glass nest-hub">{nest_scene_html(row)}</div>')
+    ui('<div class="glass nest-hub-title"><h3>🏰 Nest Hub</h3>'
+       '<small>Tap the nest or any building to upgrade it. Upgrades take time, like a real base.</small></div>')
+    my_base(row, "hub")
     eggs = to_int(row.get("owl_eggs"))
     ui(f'<div class="glass hero"><div class="egg-count">🥚 <b>{eggs}</b> Owl Eggs</div>'
-       f'<small>Academic XP unlocks the Owl Nest and Shield Vault. Owl XP from battles unlocks the '
-       f'Hatchery and Watchtower.</small></div>')
+       f'<small>Academic XP unlocks the Owl Nest and Shield Vault. Attack-league Owl XP unlocks the '
+       f'Hatchery and Watchtower. Tap 🎁 on your base to see your season rewards.</small></div>')
     hl = bld_level(row, "hatchery")
     if hl > 0:
         n, nxt = hatch_state(row)
-        every = HATCH_HOURS[hl]
         txt = (f"🥚 {n} egg{'s' if n != 1 else ''} ready to collect" if n
                else f"Next egg in {fmt_td(nxt)}")
-        ui(f'<div class="glass notice">🥚 <b>Egg Hatchery Lv.{hl}</b> · 1 egg every {every}h · '
+        ui(f'<div class="glass notice">🥚 <b>Egg Hatchery Lv.{hl}</b> · 1 egg every {HATCH_HOURS[hl]}h · '
            f'holds up to {HATCH_CAP}<br>{txt}</div>')
         st.button("🥚 Collect egg" + ("s" if n > 1 else ""), key="buy_hatch", disabled=n <= 0,
                   on_click=collect_hatchery)
-    for key in ("nest", "hatchery", "vault", "tower"):
-        icon, name, desc = BLD_INFO[key]
-        lvl, mx = bld_level(row, key), BLD_MAX[key]
-        info = bld_reqs(row, key)
-        if info is None:
-            req_html, can = '<div class="req ok">👑 Max level reached!</div>', False
-        else:
-            nxt, reqs, _ = info
-            req_html = (f'<div class="req-title">To reach Lv.{nxt}:</div>' +
-                        "".join(f'<div class="req {"ok" if ok else "no"}">{"✅" if ok else "⬜"} {esc(t)}</div>'
-                                for t, ok in reqs))
-            can = all(ok for _, ok in reqs)
-        effect = ""
-        if key == "nest":
-            effect = f"🧱 {walls_for(row)} walls now"
-        elif key == "hatchery":
-            effect = "Not built yet" if lvl == 0 else f"1 egg / {HATCH_HOURS[lvl]}h"
-        elif key == "vault":
-            effect = f"🛡️ {hit_shield_hours(row)}h shield after a raid"
-        else:
-            effect = f"+{TOWER_WALLS[lvl]} walls"
-        ui(f'''
-        <div class="glass bld-card">
-          <div class="bld-head">{art("bld_" + key if key != "nest" else "nest_" + str(lvl), icon, "art bld-art")}
-            <div class="bld-title"><b>{esc(name)}</b><small>Lv.{lvl}/{mx} · {effect}</small></div></div>
-          <p class="bld-desc">{esc(desc)}</p>
-          {req_html}
-        </div>
-        ''')
-        if info is not None:
-            label = "🔨 Build" if lvl == 0 else f"⬆️ Upgrade to Lv.{info[0]}"
-            if key == "nest" and info[2]:
-                label += f" · {info[2]} 🥚"
-            st.button(label, key=f"buy_bld_{key}", disabled=not can, on_click=upgrade_building, args=(key,))
     st.button("← Back to Arena", key="nest_back", on_click=go, args=("home",))
 
 
-# ---- visit another player's base
+# ---- visit another player's base (opened from the 👁️ icon on a leaderboard card)
 def _visit_body(username: str) -> None:
     row = user_row(username)
     if not row:
@@ -3763,36 +4319,21 @@ def _visit_body(username: str) -> None:
     badges = all_badges(row.get("achievements", ""))
     chips = "".join(f'<span class="chip">{esc(b)}</span>' for b in badges[:12]) or "<small>No badges yet</small>"
     ui(f'''
-    {nest_scene_html(row)}
+    <div class="visit-wrap">
+    {nest_scene_html(row, own=False)}
     <div class="bio-box">{esc_nl(bio) if bio else "<i>No bio yet</i>"}</div>
     <div class="stats">
       <div class="stat"><b>{to_int(row.get("attacks_won"))}</b><span>Raids won</span></div>
       <div class="stat"><b>{to_int(row.get("defends_won"))}</b><span>Defended</span></div>
       <div class="stat"><b>{to_int(row.get("writings_done"))}</b><span>Stories</span></div>
     </div>
+    {records_html(row)}
     <div class="chips">{chips}</div>
+    </div>
     ''')
 
 
-if hasattr(st, "dialog"):
-    visit_base = st.dialog("Visit Base 👁️")(_visit_body)
-else:                                        # very old Streamlit: show it inline instead of a pop-up
-    def visit_base(username: str) -> None:
-        with st.container(border=True):
-            _visit_body(username)
-
-
-def visit_picker(df) -> None:
-    me = st.session_state.user["username"].lower()
-    others = df[df["username"].str.lower() != me]
-    if others.empty:
-        return
-    labels = {r["username"]: (r["display_name"] or r["username"]) for _, r in others.iterrows()}
-    ui('<div class="glass visit-card"><h3>👁️ Visit a Base</h3><small>Peek at a classmate\'s nest.</small></div>')
-    pick = st.selectbox("Visit a base", list(labels), format_func=lambda u: labels[u],
-                        key="visit_pick", label_visibility="collapsed")
-    if st.button("👁️ Visit Base", key="visit_go"):
-        visit_base(pick)
+visit_base = _dialog("Visit Base 👁️")(_visit_body)
 
 
 # ===================================================================== SHOP
@@ -3939,6 +4480,8 @@ def page_shop() -> None:
         ui(f'<div class="glass"><h3>{heading}</h3></div>')
         owned, equipped = owned_of(row, kind), (row.get(col) or "")
         for key, (label, cost) in cat.items():
+            if cost <= 0 and key not in owned:
+                continue
             if kind == "glow":
                 shown = f'<span class="nm glow-{key}">{esc(label)}</span>'
             else:
@@ -4044,7 +4587,7 @@ def battle_attack(row: dict) -> None:
     ui(f'''
     <div class="glass target found">
       <div class="found-tag">🔎 Opponent found · {s["i"] % len(s["cands"]) + 1}/{len(s["cands"])}</div>
-      {nest_scene_html(t)}
+      {nest_scene_html(t, own=False)}
       <div class="stats">
         <div class="stat"><b>{walls_for(t)}</b><span>🧱 Walls</span></div>
         <div class="stat"><b>+{owl_loot(t_owl) + owl_win_bonus(my_owl, t_owl)}</b><span>Prize (Owl XP)</span></div>
@@ -4200,8 +4743,10 @@ def teacher_battle_tools() -> None:
     st.markdown("**⚔️ Battles and season**")
     with st.form("battle_form"):
         on = st.checkbox("Attacks enabled", value=attacks_enabled())
+        inst = st.checkbox("⚡ Instant building upgrades (for testing only)", value=upgrades_instant())
         if st.form_submit_button("💾 Save battle settings"):
             set_setting("attacks_enabled", "TRUE" if on else "FALSE")
+            set_setting("upgrade_instant", "TRUE" if inst else "FALSE")
             st.success("Saved!")
     st.caption(f"Season {get_setting('season') or season_key()} · {days_left_in_season()} days left. "
                "The reset runs by itself on the 1st of the month.")
