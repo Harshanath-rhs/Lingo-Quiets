@@ -2091,3 +2091,143 @@ div[role="dialog"] .records .rec { color: #fff; }
 .bc-arrow { font-size: 1.5rem; flex: 0 0 auto; animation: bob 1.6s ease-in-out infinite; }
 .bc-side.next .bld-big { filter: drop-shadow(0 0 12px rgba(255, 210, 63, .85)); }
 .bc-side.next small { color: var(--gold); font-weight: 700; }
+
+/* =====================================================================
+   v6: Hero Lab, Owl Commander, season podiums
+   ===================================================================== */
+/* 4 building tiles now (Hatchery, Vault, Tower, Lab) */
+.bld small b { font-size: .64rem; }
+[class*="st-key-base_"] [class*="_bt_"] { --w: calc((100% - 1.6rem - 1.2rem) / 4); }
+[class*="st-key-base_"] [class*="_bt_hatchery"] { left: .8rem; }
+[class*="st-key-base_"] [class*="_bt_vault"] { left: calc(.8rem + var(--w) + .4rem); }
+[class*="st-key-base_"] [class*="_bt_tower"] { left: calc(.8rem + 2 * (var(--w) + .4rem)); }
+[class*="st-key-base_"] [class*="_bt_lab"] { left: calc(.8rem + 3 * (var(--w) + .4rem)); }
+[class*="st-key-base_"] [class*="_bt_nest"] { left: 30%; width: 40% !important; }
+[class*="st-key-base_"] [class*="_bt_hero"] {
+  left: .6rem; width: 27% !important; height: 124px; bottom: calc(.7rem + 120px + .45rem + 10px);
+}
+.bld small { overflow: hidden; }
+
+/* glow colour by level (green -> cyan -> blue -> purple -> magenta -> orange -> gold -> rainbow) */
+.cl0 { --gc: 150, 150, 170; --g: 0px; }
+.cl1 { --gc: 125, 255, 196; --g: 8px; }
+.cl2 { --gc: 0, 245, 212;   --g: 10px; }
+.cl3 { --gc: 74, 163, 255;  --g: 12px; }
+.cl4 { --gc: 120, 120, 255; --g: 14px; }
+.cl5 { --gc: 199, 125, 255; --g: 16px; }
+.cl6 { --gc: 255, 90, 210;  --g: 18px; }
+.cl7 { --gc: 255, 140, 66;  --g: 20px; }
+.cl8 { --gc: 255, 100, 80;  --g: 22px; }
+.cl9 { --gc: 255, 210, 63;  --g: 24px; }
+.cl10 { --gc: 255, 235, 120; --g: 28px; }
+
+.cmd-halo {
+  position: absolute; left: 50%; top: 52%; width: 120%; height: 100%; transform: translate(-50%, -50%);
+  border-radius: 50%; pointer-events: none; z-index: 0;
+  background: radial-gradient(closest-side, rgba(var(--gc), .55), rgba(var(--gc), .18) 60%, transparent 75%);
+  animation: cmd-pulse 2.6s ease-in-out infinite;
+}
+@keyframes cmd-pulse { 0%, 100% { opacity: .65; transform: translate(-50%, -50%) scale(.92); } 50% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); } }
+.cl10 .cmd-halo { animation: cmd-pulse 2s ease-in-out infinite, cmd-rainbow 5s linear infinite; }
+@keyframes cmd-rainbow { to { filter: hue-rotate(360deg); } }
+
+/* the Commander standing in the base */
+.cmd-figure { position: absolute; left: .55rem; bottom: .25rem; width: 25%; max-width: 92px; z-index: 3; display: grid; place-items: end center; pointer-events: none; }
+.cmd-figure .cmd-img { position: relative; z-index: 1; width: 100% !important; height: auto !important; max-height: 112px; object-fit: contain; animation: none !important;
+  filter: drop-shadow(0 0 var(--g) rgba(var(--gc), .95)); }
+.cmd-figure .cmd-img.emoji { font-size: 3.2rem !important; line-height: 1 !important; }
+.cmd-lv {
+  position: relative; z-index: 2; margin-bottom: 2px; padding: 1px 7px; border-radius: 99px; font-size: .62rem; font-weight: 800; color: #fff;
+  background: rgba(0, 0, 0, .55); border: 1px solid rgba(var(--gc), .95); box-shadow: 0 0 8px rgba(var(--gc), .7); letter-spacing: .02em;
+}
+.cmd-figure.cl10 .cmd-lv { color: #ffe27a; }
+.cmd-figure .cmd-halo { top: 62%; }
+
+/* Hero Lab list + hero window */
+.hero-card { display: flex; align-items: center; gap: .75rem; padding: .6rem .7rem; border-radius: 16px;
+  background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .25); }
+.hero-card.locked .hero-pic { filter: brightness(0) opacity(.5); }
+.hero-mini, .hero-big { position: relative; display: grid; place-items: center; flex: 0 0 auto; }
+.hero-mini { width: 64px; height: 64px; }
+.hero-mini .hero-pic { position: relative; z-index: 1; width: 60px !important; height: 60px !important; object-fit: contain; filter: drop-shadow(0 0 6px rgba(var(--gc), .9)); }
+.hero-card.locked .hero-mini .hero-pic { filter: brightness(0) opacity(.5); }
+.hero-info { flex: 1; min-width: 0; text-align: left; }
+.hero-info b { display: block; font-size: 1rem; }
+.hero-info small { display: block; font-size: .75rem; opacity: .92; }
+.hero-go { font-size: 1.8rem; opacity: .8; }
+.st-key-hero_commander { position: relative; margin-bottom: .45rem; }
+.st-key-hero_commander [data-testid="stButton"], .st-key-hero_commander .stButton { position: static !important; }
+.st-key-hero_commander button {
+  position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important; min-height: 0 !important;
+  opacity: 0 !important; padding: 0 !important; cursor: pointer !important; z-index: 5;
+}
+.hero-dlg { text-align: center; padding: .2rem 0 .3rem; }
+.hero-dlg h3 { margin: .2rem 0 .3rem !important; }
+.hero-big { width: 170px; height: 170px; margin: 0 auto; }
+.hero-big .hero-pic { position: relative; z-index: 1; width: 160px !important; height: 160px !important; object-fit: contain; filter: drop-shadow(0 0 var(--g) rgba(var(--gc), .95)); animation: bob 3s ease-in-out infinite; }
+.hero-big.locked .hero-pic { filter: brightness(0) opacity(.45); animation: none; }
+.hero-big .hero-pic.emoji { font-size: 5rem !important; line-height: 160px !important; }
+.hero-big.cl10 .hero-pic { animation: bob 3s ease-in-out infinite, cmd-rainbow 5s linear infinite; }
+.lvl-pips.ten i { width: 15px; }
+.hero-dlg p { font-size: .85rem; opacity: .92; margin: .3rem 0 0; }
+
+/* Commander inside the quest window */
+.cmd-strip { position: relative; display: flex; align-items: center; gap: .6rem; padding: .35rem .6rem; margin: .1rem 0 .55rem;
+  border-radius: 14px; background: rgba(var(--gc), .16); border: 1px solid rgba(var(--gc), .7); box-shadow: 0 0 12px rgba(var(--gc), .35); }
+.cmd-mini { position: relative; width: 56px; height: 56px; flex: 0 0 auto; display: grid; place-items: center; }
+.cmd-mini .cmd-img { position: relative; z-index: 1; width: 56px !important; height: 56px !important; object-fit: contain; animation: none !important; }
+.cmd-mini .cmd-img.emoji { font-size: 2.3rem !important; line-height: 56px !important; }
+.cmd-txt b { display: block; font-size: .9rem; }
+.cmd-txt small { display: block; font-size: .75rem; opacity: .95; color: rgb(var(--gc)); font-weight: 700; }
+.cmd-bubble { position: absolute; right: .6rem; top: -.7rem; padding: .25rem .7rem; border-radius: 99px; font-weight: 800; font-size: .95rem; z-index: 3; white-space: nowrap; }
+.cmd-bubble.paid { background: linear-gradient(135deg, #ffd23f, #ff9f1c); color: #3a2400; box-shadow: 0 0 16px rgba(255, 210, 63, .9); }
+.cmd-bubble.store { background: rgba(255, 255, 255, .85); color: #333; }
+.cmd-pop-0 { animation: cmd-pop-0 1.6s ease-out both; }
+.cmd-pop-1 { animation: cmd-pop-1 1.6s ease-out both; }
+@keyframes cmd-pop-0 { 0% { transform: translateY(14px) scale(.4); opacity: 0; } 18% { transform: translateY(-4px) scale(1.25); opacity: 1; } 35% { transform: translateY(0) scale(1); } 100% { transform: translateY(-4px) scale(1); opacity: 1; } }
+@keyframes cmd-pop-1 { 0% { transform: translateY(14px) scale(.4); opacity: 0; } 18% { transform: translateY(-4px) scale(1.25); opacity: 1; } 35% { transform: translateY(0) scale(1); } 100% { transform: translateY(-4px) scale(1); opacity: 1; } }
+
+/* leaderboard chips + season podiums */
+.chip-cmd { background: rgba(var(--gc), .28) !important; border-color: rgba(var(--gc), .9) !important; }
+.chip-podium { background: rgba(255, 210, 63, .25) !important; border-color: rgba(255, 210, 63, .85) !important; }
+.chip-podium.r2 { background: rgba(200, 210, 230, .25) !important; border-color: rgba(220, 228, 245, .85) !important; }
+.chip-podium.r3 { background: rgba(205, 127, 50, .28) !important; border-color: rgba(230, 150, 80, .85) !important; }
+.podiums { margin-top: .7rem; text-align: left; }
+.podiums h4 { margin: 0 0 .3rem; font-size: .95rem; }
+.pod-sum { font-size: .8rem; opacity: .92; margin-bottom: .3rem; }
+.pod-row { padding: .35rem .6rem; margin-bottom: .25rem; border-radius: 10px; font-size: .85rem; background: rgba(255, 255, 255, .1); border-left: 4px solid #ffd23f; }
+.pod-row.r2 { border-left-color: #dfe6f5; }
+.pod-row.r3 { border-left-color: #e0955a; }
+
+/* ---- v6.1: bigger Commander in the base, GIF in the Lab, small Commander on leaderboard cards, Lab tap fix ---- */
+.cmd-figure { width: 34%; max-width: 128px; }
+.cmd-figure .cmd-img { max-height: 132px; }
+.cmd-figure .cmd-img.emoji { font-size: 4.4rem !important; }
+.cmd-lv { font-size: .7rem; padding: 1px 9px; }
+[class*="st-key-base_"] [class*="_bt_hero"] { width: 33% !important; height: 150px; left: .5rem; }
+[class*="st-key-base_"] [class*="_bt_nest"] { left: 36%; width: 36% !important; }
+
+/* Lab: the whole hero card is the tap target (the button's wrappers must not be positioned) */
+.st-key-hero_commander { position: relative; }
+.st-key-hero_commander [class*="st-key-hero_"][class*="_open"],
+.st-key-hero_commander [data-testid="stElementContainer"],
+.st-key-hero_commander [data-testid="stButton"],
+.st-key-hero_commander .stButton,
+.st-key-hero_commander [data-testid="stTooltipHoverTarget"] { position: static !important; }
+.st-key-hero_commander [class*="_open"] button {
+  position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important;
+  min-height: 0 !important; opacity: 0 !important; padding: 0 !important; cursor: pointer !important; z-index: 5;
+}
+.hero-mini { width: 76px; height: 76px; }
+.hero-mini .hero-pic { width: 72px !important; height: 72px !important; }
+.hero-big { width: 200px; height: 210px; }
+.hero-big .hero-pic { width: 190px !important; height: 200px !important; }
+.hero-card.locked .hero-pic, .hero-big.locked .hero-pic { filter: brightness(0) opacity(.55) !important; }
+.hero-big.locked .cmd-halo, .hero-card.locked .cmd-halo { display: none; }
+
+/* leaderboard card: tiny Commander in the chip row (no glow); a black shadow when not acquired yet */
+.lb-cmd { display: inline-flex; align-items: center; gap: 3px; padding: 0 8px 0 3px; border-radius: 99px; line-height: 1;
+  background: rgba(255, 255, 255, .14); border: 1px solid rgba(255, 255, 255, .35); }
+.lb-cmd i { display: block; width: 26px; height: 32px; background-size: contain; background-repeat: no-repeat; background-position: center; }
+.lb-cmd i.off { filter: brightness(0) opacity(.5); }
+.lb-cmd small { font-size: .68rem; font-weight: 700; opacity: .95; white-space: nowrap; }
