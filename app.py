@@ -137,13 +137,14 @@ DUEL_DAILY_REWARDS = 3            # rewarded duel wins per player per day (stops
 
 # Nest Hub buildings
 BLD_COL = {"nest": "nest_level", "hatchery": "hatchery_level", "vault": "vault_level",
-           "tower": "tower_level"}
-BLD_MAX = {"nest": 5, "hatchery": 3, "vault": 3, "tower": 3}
+           "tower": "tower_level", "lab": "lab_level"}
+BLD_MAX = {"nest": 5, "hatchery": 3, "vault": 3, "tower": 3, "lab": 1}
 BLD_INFO = {
     "nest": ("🪺", "Owl Nest", "Town Hall: more walls, and it sets how high the other buildings can go."),
     "hatchery": ("🥚", "Egg Hatchery", "Makes 1 Owl Egg by itself. Higher levels hatch faster."),
     "vault": ("🛡️", "Shield Vault", "Your shield lasts longer after someone raids you."),
     "tower": ("🗼", "Watchtower", "Adds extra walls to your nest so raiders have a harder time."),
+    "lab": ("🧪", "Hero Lab", "Recruit and train your heroes here. Heroes boost you in quests."),
 }
 TOWN_REQ = {2: (500, 5), 3: (2000, 10), 4: (5000, 20), 5: (10000, 35)}   # lifetime XP, Owl Eggs
 HATCH_REQ = {1: 30, 2: 150, 3: 400}                                       # Owl XP
@@ -188,9 +189,23 @@ COSMETICS = {
 TEACHER_ROLES = {"teacher", "admin"}
 
 # ---- timed building upgrades + season rewards (v5)
-UPG_COL = {"nest": "nest_upg", "hatchery": "hatchery_upg", "vault": "vault_upg", "tower": "tower_upg"}
+UPG_COL = {"nest": "nest_upg", "hatchery": "hatchery_upg", "vault": "vault_upg", "tower": "tower_upg",
+           "lab": "lab_upg"}
 UPG_HOURS = {"nest": {2: 1, 3: 4, 4: 12, 5: 24}, "hatchery": {1: 1, 2: 6, 3: 12},
-             "vault": {1: 1, 2: 6, 3: 12}, "tower": {1: 1, 2: 6, 3: 12}}   # hours to build each level
+             "vault": {1: 1, 2: 6, 3: 12}, "tower": {1: 1, 2: 6, 3: 12},
+             "lab": {1: 1}}   # hours to build each level
+LAB_NEST_REQ = 2                  # Hero Lab needs Owl Nest Lv.2 ...
+LAB_EGG_COST = 30                 # ... and this many Owl Eggs (the Lab has just 1 level)
+
+# Heroes (v6). Add a new hero here and it appears in the Hero Lab by itself.
+# cost to reach level L = base_cost + step * (L - 1)  ->  50, 60, 70 ... 140
+HEROES = {
+    "commander": {"col": "commander_level", "name": "Owl Commander", "icon": "🦉", "max": 10,
+                  "nest": 2, "base_cost": 50, "step": 10, "pct": 2,
+                  "desc": "A veteran flyer who multiplies the XP you earn on every correct answer in quests."},
+}
+CMD_MODES = ("normal", "practice", "review", "assign")   # quests where the Commander multiplies XP
+CMD_MAX_BYTES = 4_000_000                                 # bigger GIFs fall back to commander.png
 RUSH_HOURS_PER_EGG = 4            # "Finish now" costs 1 Owl Egg per 4 hours left (rounded up)
 
 # Season reward tracks: (key, icon, label, [(value needed, Owl Eggs), ...]). The best tier reached pays out.
@@ -257,6 +272,8 @@ USER_COLS = (
     # v5: timed upgrades, season rewards, records
     "duels_won", "owl_banked", "season_base", "season_pending", "best_xp", "best_xp_season",
     "best_owl", "best_owl_season", "house_cups", "nest_upg", "hatchery_upg", "vault_upg", "tower_upg",
+    # v6: Hero Lab + Owl Commander
+    "lab_level", "lab_upg", "commander_level",
 )
 Q_COLS = (
     "id", "week", "question", "option_a", "option_b", "option_c", "option_d",
@@ -1591,7 +1608,7 @@ def rank_delta_html(rank: int, last_rank) -> str:
     return f'<span class="rank-delta down">▼{abs(diff)}</span>'
 
 
-def lb_row(rank: int, r, mine: bool) -> str:
+def lb_row(rank: int, r, mine: bool, pods=None) -> str:
     """One leaderboard card. The whole card is a <details>: tap it to open the details."""
     xp = int(r["xp"])
     i = league_of(xp)
@@ -1609,10 +1626,19 @@ def lb_row(rank: int, r, mine: bool) -> str:
     chips += f'<span class="chip chip-stories">🖋️ {stories}</span>'
     if to_int(r.get("internal_xp")):
         chips += f'<span class="chip chip-prestige">⭐ P{to_int(r.get("internal_xp"))}</span>'
+    chips = cmd_lb_html(r) + chips
     bl = battle_league(owl_xp_of(r))
     chips += f'<span class="chip chip-owl">{battle_icon(bl, "bl-mini sm")}{BATTLE_LEAGUES[bl][1]}</span>'
     if to_int(r.get("house_cups")):
         chips += f'<span class="chip chip-cup">🏆 ×{to_int(r.get("house_cups"))}</span>'
+    plist = (pods or {}).get(str(r.get("username") or "").strip().lower()) or []
+    if plist:
+        ls, lr = plist[-1]
+        try:
+            short = datetime.strptime(ls, "%Y-%m").strftime("%b %Y")
+        except ValueError:
+            short = ls
+        chips += f'<span class="chip chip-podium r{lr}">{PODIUM_ICON[lr]} {esc(short)}</span>'
     rec = records_of(r)
     best_line = (f'<div class="detail-path"><small>🏅 Best:</small> {esc(LEAGUES[rec["league"]][1])} · '
                  f'{rec["xp"]:,} XP · {esc(_when(rec["xp_season"]))}</div>') if rec["xp"] > 0 else ""
@@ -1645,10 +1671,10 @@ def lb_row(rank: int, r, mine: bool) -> str:
     )
 
 
-def lb_entry(rank: int, r, mine: bool) -> None:
+def lb_entry(rank: int, r, mine: bool, pods=None) -> None:
     """A leaderboard card with two small icons inside it: 👁️ visit base, 🆚 challenge to a duel."""
     with st.container(key=f"lbr_{rank}"):
-        ui(lb_row(rank, r, mine))
+        ui(lb_row(rank, r, mine, pods))
         if not mine:
             uname = str(r["username"])
             if st.button("👁️", key=f"lbv_{rank}", help="Visit this base"):
@@ -1846,12 +1872,16 @@ def page_home():
         log.warning("class battle failed: %s", type(e).__name__)
 
     ui('<div class="glass lb-card"><h3>🏆 Leaderboard</h3></div>')
+    pods = podium_map()
+    css = cmd_lb_css()
+    if css:
+        ui(css)
     with st.container(key="lblist"):
         for i, r in df.head(min(BOARD_SIZE, len(df))).iterrows():
-            lb_entry(i + 1, r, pos is not None and i == pos)
+            lb_entry(i + 1, r, pos is not None and i == pos, pods)
         if pos is not None and pos >= BOARD_SIZE:
             ui('<div class="gap">• • •</div>')
-            lb_entry(pos + 1, row, True)
+            lb_entry(pos + 1, row, True, pods)
 
 
 # ----------------------------------------------------------------- quest
@@ -1889,6 +1919,7 @@ def start_quest(mode: str = "normal"):
             "wrong_streak": 0, "log": [], "saved": False, "last": None,
             "pu": get_inventory(row), "pu_earned": [], "band": band, "fixed": [],
             "assign_id": assign["id"] if assign else "", "assign_bonus": assign["bonus"] if assign else 0,
+            "cmd": hero_level(row), "cmd_carry": 0.0, "cmd_total": 0,
         }
         pick_next(q)
         st.session_state.quest = q
@@ -1939,6 +1970,16 @@ def answer(letter: str):
         q["gained"] += base + speed + combo
         q["correct"] += 1
         q["last"] = {"ok": True, "gain": base + speed + combo, "speed": speed, "combo": combo}
+        if q.get("cmd") and q["mode"] in CMD_MODES:
+            # Owl Commander: +2% per level of this answer's XP. Fractions are saved and paid out as whole XP.
+            exact = (base + speed + combo) * commander_pct(q["cmd"])
+            q["cmd_carry"] += exact
+            whole = int(q["cmd_carry"] + 1e-9)
+            q["cmd_carry"] -= whole
+            q["gained"] += whole
+            q["cmd_total"] += whole
+            q["last"]["gain"] += whole
+            q["last"]["cmd"] = {"exact": exact, "whole": whole, "pct": HEROES["commander"]["pct"] * q["cmd"]}
         if q["mode"] == "review":
             q["fixed"].append(cur["id"])
         if q["streak"] >= 3 and not q["pu_earned"] and q["mode"] == "normal":
@@ -2011,6 +2052,11 @@ def finalize(q: dict):
     full = q["n"] > 0 and q["correct"] == q["n"] and q["mode"] in ("normal", "assign")
     q.setdefault("perfect", PERFECT_BONUS if full else 0)
     q.setdefault("chest", random.choices(CHEST_TABLE, CHEST_WEIGHTS)[0] if q["mode"] == "normal" else 0)
+    left = round(q.get("cmd_carry", 0.0))                  # leftover Commander fraction: paid at the end
+    if left > 0:
+        q["gained"] += left
+        q["cmd_total"] = q.get("cmd_total", 0) + left
+        q["cmd_carry"] = 0.0
     gained = max(0, q["gained"]) + q["perfect"] + q["chest"] + q["assign_bonus"]
     res = save_results(me, q, gained)
     me["xp"] = res["total"]
@@ -2031,6 +2077,10 @@ def quest_intro():
     urow = user_row(me["username"])
     li = league_of(me["xp"])
     mistakes = len(mistake_ids(urow))
+    cl = hero_level(urow)
+    cmd_rule = (f'<div>🦉 Owl Commander Lv.{cl}: <b>+{HEROES["commander"]["pct"] * cl}% XP</b> on every correct answer</div>'
+                if cl else '<div>🧪 Recruit the Owl Commander in the Hero Lab to boost your XP</div>'
+                if bld_level(urow, "lab") >= 1 else "")
     ui(f'''
     <div class="glass hero intro-card">
       {art("mascot_idle", "🦉")}
@@ -2043,6 +2093,7 @@ def quest_intro():
         <div>✂️ ⏳ ⏭️ Power-ups help you in a tough spot</div>
         <div>❌ Wrong answers cost 1–3 XP (resets on correct)</div>
         <div>💯 Perfect round: <b>+{PERFECT_BONUS} XP</b> · 🎁 Mystery chest in normal quests</div>
+        {cmd_rule}
       </div>
       <p class="tier">{LEAGUES[li][1]}</p>
     </div>
@@ -2065,6 +2116,8 @@ def quest_result(q: dict):
     li = league_of(me["xp"])
     mode = q["mode"]
     lines = ""
+    if q.get("cmd_total"):
+        lines += f'<div>🦉 Commander bonus +{q["cmd_total"]} XP (Lv.{q["cmd"]})</div>'
     if q["perfect"]:
         lines += f'<div>💯 Perfect round +{q["perfect"]} XP</div>'
     if q["assign_bonus"]:
@@ -2109,6 +2162,24 @@ def quest_result(q: dict):
     st.button("🏆 See Leaderboard", key="finish", on_click=leave_quest)
 
 
+def cmd_strip_html(q: dict) -> str:
+    """Owl Commander inside the question card: shows his boost and pops a bubble after every correct answer."""
+    lvl = q["cmd"]
+    pct = HEROES["commander"]["pct"] * lvl
+    last = q.get("last") or {}
+    bubble = ""
+    if q["picked"] is not None and last.get("ok") and last.get("cmd"):
+        c = last["cmd"]
+        n = q["i"] % 2                                   # alternate names so the pop animation replays
+        if c["whole"]:
+            bubble = f'<span class="cmd-bubble paid cmd-pop-{n}">🦉 +{c["whole"]} XP!</span>'
+        else:
+            bubble = f'<span class="cmd-bubble store cmd-pop-{n}">🦉 +{c["exact"]:.1f} saved</span>'
+    return (f'<div class="cmd-strip cl{lvl}"><div class="cmd-mini"><div class="cmd-halo"></div>{commander_img("cmd-img")}</div>'
+            f'<div class="cmd-txt"><b>Owl Commander · Lv.{lvl}</b><small>×{1 + pct / 100:.2f} XP boost (+{pct}%)</small></div>'
+            f'{bubble}</div>')
+
+
 def quest_play(q: dict):
     elapsed = time.time() - q["started"]
     if q["picked"] is None and elapsed > q["limit"] + 1:
@@ -2122,10 +2193,12 @@ def quest_play(q: dict):
     unit = "Wall" if q["mode"] == "attack" else "Question"
     walls_html = (battle_stage_html(q) if q["mode"] == "attack"
                   else (duel_banner_html(q) if q["mode"] == "challenge" else ""))
+    cmd_html = cmd_strip_html(q) if q.get("cmd") and q["mode"] in CMD_MODES else ""
     ui(f'''
     <div class="glass question-card">
       <div class="bar"><i style="width:{q["i"] / n * 100:.0f}%"></i></div>
       {walls_html}
+      {cmd_html}
       <div class="q-meta">
         <small>{unit} {q["i"] + 1} of {n} · {stars}{tag}</small>
         {combo}
@@ -2167,6 +2240,8 @@ def quest_play(q: dict):
             f' ⚡+{last["speed"]}' if last.get("speed") else "",
             f' 🔥+{last["combo"]}' if last.get("combo") else "",
         ])
+        if last.get("cmd"):
+            extra += f' 🦉+{last["cmd"]["whole"]}' if last["cmd"]["whole"] else f' 🦉+{last["cmd"]["exact"]:.1f}'
         msg, cls = f'🎉 Correct! +{last["gain"]} XP{extra}', "ok"
         if last.get("earned"):
             icon, label, _ = POWERUPS[last["earned"]]
@@ -2951,8 +3026,10 @@ def _when(key: str) -> str:
 
 def records_html(row) -> str:
     rec = records_of(row)
+    pod = podium_html(podium_map().get(str(row.get("username") or "").strip().lower(), []))
     if rec["xp"] <= 0 and rec["owl"] <= 0:
-        return '<div class="records"><h3>🏅 Personal records</h3><div class="rec-empty">No records yet. Finish a season to set one!</div></div>'
+        return ('<div class="records"><h3>🏅 Personal records</h3>'
+                f'<div class="rec-empty">No records yet. Finish a season to set one!</div>{pod}</div>')
     cups = to_int(row.get("house_cups"))
     cup = f'<div class="rec-cups">🏆 House Cup winner × {cups}</div>' if cups else ""
     return (
@@ -2963,7 +3040,7 @@ def records_html(row) -> str:
         f'<small>Best season XP</small><em>{esc(_when(rec["xp_season"]))}</em></div>'
         f'<div class="rec">{battle_icon(rec["battle"], "bl-rec")}<b>{esc(BATTLE_LEAGUES[rec["battle"]][1])}</b>'
         f'<small>Best attack league</small><em>{esc(_when(rec["owl_season"]))}</em></div>'
-        f'</div>{cup}</div>'
+        f'</div>{cup}{pod}</div>'
     )
 
 
@@ -3357,9 +3434,10 @@ def nest_scene_html(row: dict, compact: bool = False, own: bool = True) -> str:
         f'<div class="scene-nest lvl{nl}{" max" if nmax else ""}">'
         f'<div class="nest-wrap">{bld_art("nest", nl, "art nest-art")}</div>'
         f'<small>🪺 Owl Nest Lv.{nl}{" · MAX ⭐" if nmax else ""}</small>'
-        + (f'<div class="nest-up">{_prog_html(ninf)}</div>' if ninf else "") + '</div>')
+        + (f'<div class="nest-up">{_prog_html(ninf)}</div>' if ninf else "")
+        + cmd_figure_html(row) + '</div>')
     tiles = ""
-    for key in ("hatchery", "vault", "tower"):
+    for key in ("hatchery", "vault", "tower", "lab"):
         lvl, inf = bld_level(row, key, now), upg_info(row, key, now)
         mx = lvl >= BLD_MAX[key]
         icon, short, _ = BLD_INFO[key]
@@ -3373,6 +3451,213 @@ def nest_scene_html(row: dict, compact: bool = False, own: bool = True) -> str:
         tiles += (f'<div class="{cls_}">{bld_art(key, lvl, "art bld-art", bool(inf))}'
                   f'<small><b>{esc(short)}</b><br>{sub}</small></div>')
     return wrap + head + nest_html + f'<div class="bld-row">{tiles}</div></div>'
+
+
+# ---- Heroes: the Owl Commander (add more heroes to HEROES later) and the Hero Lab
+def hero_level(row, key: str = "commander") -> int:
+    h = HEROES[key]
+    return max(0, min(h["max"], to_int(row.get(h["col"]))))
+
+
+def hero_cost(key: str, to_level: int) -> int:
+    h = HEROES[key]
+    return h["base_cost"] + h["step"] * (to_level - 1)          # 50, 60, 70 ... 140
+
+
+def commander_pct(lvl: int) -> float:
+    return HEROES["commander"]["pct"] * max(0, lvl) / 100.0
+
+
+def commander_img(cls: str = "cmd-img") -> str:
+    """commander_idle.gif (assets/images/anim/ or assets/images/), else commander.png, else an emoji."""
+    for folder in (ANIM_DIR, IMG_DIR):
+        for ext in (".gif", ".webp", ".png"):
+            p = folder / f"commander_idle{ext}"
+            if p.exists() and p.stat().st_size <= CMD_MAX_BYTES:
+                return f'<img class="{cls} anim" src="{_load_raw(str(p), p.stat().st_mtime)}" alt="">'
+    return art_first(["commander"], "🦉", f"{cls} art")
+
+
+def hero_img(key: str, icon: str, cls: str = "hero-pic") -> str:
+    """Hero picture for the Lab: the commander uses his animated GIF (also when still locked)."""
+    return commander_img(cls) if key == "commander" else art_first([key], icon, f"art {cls}")
+
+
+def _commander_file(still: bool = False):
+    """Path of commander_idle.(gif|webp|png) in anim/ or images/, or commander.png when `still`."""
+    if still:
+        p = IMG_DIR / "commander.png"
+        return p if p.exists() else None
+    for folder in (ANIM_DIR, IMG_DIR):
+        for ext in (".gif", ".webp", ".png"):
+            p = folder / f"commander_idle{ext}"
+            if p.exists() and p.stat().st_size <= CMD_MAX_BYTES:
+                return p
+    return None
+
+
+def cmd_lb_css() -> str:
+    """Leaderboard commander pictures: one <style> holding the image data (not repeated on every card)."""
+    css = ""
+    gif, png = _commander_file(), _commander_file(True)
+    if gif:
+        css += f'.lb-cmd i.on{{background-image:url("{_load_raw(str(gif), gif.stat().st_mtime)}")}}'
+    pick = png or gif                       # locked players: the still picture, drawn as a black shadow
+    if pick:
+        css += f'.lb-cmd i.off{{background-image:url("{_load_raw(str(pick), pick.stat().st_mtime)}")}}'
+    return f"<style>{css}</style>" if css else ""
+
+
+def cmd_lb_html(r) -> str:
+    lvl = hero_level(r)
+    if lvl > 0:
+        return f'<div class="lb-cmd" title="Owl Commander Lv.{lvl}"><i class="on"></i><small>Lv.{lvl}</small></div>'
+    return '<div class="lb-cmd" title="Owl Commander: not acquired yet"><i class="off"></i><small>not yet</small></div>'
+
+
+def cmd_figure_html(row, small: bool = False) -> str:
+    lvl = hero_level(row)
+    if lvl <= 0:
+        return ""
+    return (f'<div class="cmd-figure{" small" if small else ""} cl{lvl}"><span class="cmd-lv">Lv.{lvl}</span>'
+            f'<div class="cmd-halo"></div>{commander_img()}</div>')
+
+
+def set_lab_view(view: str) -> None:
+    st.session_state.lab_view = view
+
+
+def upgrade_hero(key: str = "commander") -> None:
+    h = HEROES[key]
+    first = hero_level(user_row(st.session_state.user["username"]), key) == 0
+
+    def fn(cur):
+        lvl = hero_level(cur, key)
+        if lvl >= h["max"]:
+            raise ShopError("Your hero is already at the top level.")
+        if bld_level(cur, "lab") < 1:
+            raise ShopError("Build the Hero Lab first.")
+        if nest_level(cur) < h["nest"]:
+            raise ShopError(f"You need Owl Nest Lv.{h['nest']} first.")
+        cost, have = hero_cost(key, lvl + 1), to_int(cur.get("owl_eggs"))
+        if have < cost:
+            raise ShopError(f"You need {cost} Owl Eggs.")
+        return {h["col"]: lvl + 1, "owl_eggs": have - cost}
+
+    _shop_call(fn, f"{h['icon']} {h['name']} {'recruited' if first else 'upgraded'}!", "levelup")
+
+
+def _hero_view(row: dict, key: str) -> None:
+    h = HEROES[key]
+    lvl, mx = hero_level(row, key), h["max"]
+    eggs = to_int(row.get("owl_eggs"))
+    nxt = lvl + 1
+    pips = "".join(f'<i class="{"on" if i < lvl else ""}"></i>' for i in range(mx))
+    now_txt = f"+{h['pct'] * lvl}% XP" if lvl else "not recruited yet"
+    ui(f'''
+    <div class="hero-dlg">
+      <div class="hero-big cl{lvl}{" locked" if lvl == 0 else ""}"><div class="cmd-halo"></div>{hero_img(key, h["icon"], "hero-pic")}</div>
+      <h3>{h["icon"]} {esc(h["name"])}</h3>
+      <div class="lvl-pips ten">{pips}</div>
+      <small>Lv.{lvl}/{mx} · {now_txt}</small>
+      <p>{esc(h["desc"])}</p>
+    </div>
+    ''')
+    if lvl >= mx:
+        ui('<div class="req ok">👑 Max level reached! Your commander gives +%d%% XP.</div>' % (h["pct"] * mx))
+    else:
+        cost = hero_cost(key, nxt)
+        reqs = [(f"🪺 Owl Nest Lv.{h['nest']} (you: Lv.{nest_level(row)})", nest_level(row) >= h["nest"]),
+                (f"🥚 {cost} Owl Eggs (you: {eggs})", eggs >= cost)]
+        ui('<div class="upg-box"><div class="req-title">%s</div>' % ("To recruit:" if lvl == 0 else f"To reach Lv.{nxt}:")
+           + "".join(f'<div class="req {"ok" if ok else "no"}">{"✅" if ok else "⬜"} {esc(t)}</div>' for t, ok in reqs)
+           + f'<div class="req">🎁 You get: +{h["pct"] * nxt}% XP on every correct answer in quests</div>'
+           + f'<div class="req">🪙 Each level costs {h["step"]} 🥚 more (Lv.{mx} = {hero_cost(key, mx)} 🥚)</div></div>')
+        label = (f"🎖️ Recruit · {cost} 🥚" if lvl == 0 else f"⬆️ Upgrade to Lv.{nxt} · {cost} 🥚")
+        st.button(label, key=f"hero_up_{key}", disabled=not all(ok for _, ok in reqs),
+                  on_click=upgrade_hero, args=(key,))
+    c1, c2 = st.columns(2, gap="small")
+    with c1:
+        st.button("← Back to Lab", key="lab_back", on_click=set_lab_view, args=("",))
+    with c2:
+        if st.button("✅ Done", key="lab_done"):
+            st.rerun()
+
+
+def _lab_body(row: dict) -> None:
+    ok_msg, err_msg = st.session_state.pop("flash_ok", None), st.session_state.pop("flash", None)
+    if ok_msg:
+        st.success(ok_msg)
+    if err_msg:
+        st.error(err_msg)
+    row = user_row(st.session_state.user["username"]) or row
+    view = st.session_state.get("lab_view", "")
+    if view in HEROES:
+        return _hero_view(row, view)
+    eggs = to_int(row.get("owl_eggs"))
+    ui(f'''
+    <div class="bld-dlg max">
+      <div class="bld-big-wrap">{bld_art("lab", bld_level(row, "lab"), "art bld-big")}</div>
+      <h3>{BLD_INFO["lab"][0]} Hero Lab</h3>
+      <small>🥚 {eggs} Owl Eggs · tap a hero to recruit or upgrade</small>
+    </div>
+    ''')
+    for key, h in HEROES.items():
+        lvl = hero_level(row, key)
+        info = (f"Lv.{lvl}/{h['max']} · +{h['pct'] * lvl}% XP" if lvl
+                else f"Not recruited · {hero_cost(key, 1)} 🥚 · needs Owl Nest Lv.{h['nest']}")
+        with st.container(key=f"hero_{key}"):
+            ui(f'''
+            <div class="hero-card{" locked" if lvl == 0 else ""}">
+              <div class="hero-mini cl{lvl}"><div class="cmd-halo"></div>{hero_img(key, h["icon"], "hero-pic")}</div>
+              <div class="hero-info"><b>{esc(h["name"])}</b><small>{esc(info)}</small></div>
+              <span class="hero-go">›</span>
+            </div>
+            ''')
+            st.button("·", key=f"hero_{key}_open", on_click=set_lab_view, args=(key,))
+    ui('<small class="se-note">More heroes will arrive here later.</small>')
+    if st.button("✅ Done", key="lab_done0"):
+        st.rerun()
+
+
+# ---- season podiums (1st / 2nd / 3rd). Every rank stays in the hall_of_fame tab; only the podium is shown.
+PODIUM_ICON = {1: "🥇", 2: "🥈", 3: "🥉"}
+
+
+def podium_map() -> dict:
+    """{username(lower): [(season 'YYYY-MM', rank 1-3), ...]} oldest first."""
+    out = {}
+    try:
+        hof = read_tab("hall_of_fame")
+    except Exception:
+        return out
+    for _, r in hof.iterrows():
+        rk, season = to_int(r.get("rank")), str(r.get("season") or "").strip()
+        if 1 <= rk <= 3 and season:
+            out.setdefault(str(r.get("username") or "").strip().lower(), []).append((season, rk))
+    for v in out.values():
+        v.sort()
+    return out
+
+
+def podium_label(season: str, rank: int) -> str:
+    month, year = season_name(season).replace(" Season", ""), str(season)[:4]
+    return {1: f"{month} Season Winner · {year}",
+            2: f"{month} Season · 2nd place · {year}",
+            3: f"{month} Season · 3rd place · {year}"}.get(rank, season)
+
+
+def podium_html(pods: list) -> str:
+    if not pods:
+        return ('<div class="podiums"><h4>🏆 Season podiums</h4>'
+                '<div class="rec-empty">Finish 1st, 2nd or 3rd in a season to earn a podium here.</div></div>')
+    cnt = {1: 0, 2: 0, 3: 0}
+    for _, rk in pods:
+        cnt[rk] += 1
+    items = "".join(f'<div class="pod-row r{rk}">{PODIUM_ICON[rk]} <b>{esc(podium_label(s, rk))}</b></div>'
+                    for s, rk in reversed(pods[-6:]))
+    return (f'<div class="podiums"><h4>🏆 Season podiums</h4>'
+            f'<div class="pod-sum">🥇 ×{cnt[1]} · 🥈 ×{cnt[2]} · 🥉 ×{cnt[3]}</div>{items}</div>')
 
 
 # ---- battle stage (face-to-face, wall by wall)
@@ -3982,6 +4267,11 @@ def bld_reqs(row: dict, key: str):
         reqs.append((f"📘 {need_xp:,} lifetime XP (you: {life:,})", life >= need_xp))
         reqs.append((f"🥚 {eggs} Owl Eggs (you: {have})", have >= eggs))
         return nxt, reqs, eggs
+    if key == "lab":
+        have = to_int(row.get("owl_eggs"))
+        reqs.append((f"🪺 Owl Nest Lv.{LAB_NEST_REQ} (you: Lv.{nest_level(row)})", nest_level(row) >= LAB_NEST_REQ))
+        reqs.append((f"🥚 {LAB_EGG_COST} Owl Eggs (you: {have})", have >= LAB_EGG_COST))
+        return nxt, reqs, LAB_EGG_COST
     reqs.append((f"🪺 Owl Nest Lv.{nxt}", nest_level(row) >= nxt))
     if key in ("hatchery", "tower"):
         need = (HATCH_REQ if key == "hatchery" else TOWER_REQ)[nxt]
@@ -4123,6 +4413,8 @@ def bld_effect(key: str, lvl: int) -> str:
         return "not built yet" if lvl <= 0 else f"🥚 1 egg every {HATCH_HOURS[lvl]}h"
     if key == "vault":
         return f"🛡️ {SHIELD_AFTER_HIT_H + VAULT_SHIELD_BONUS[lvl]}h shield after a raid"
+    if key == "lab":
+        return "not built yet" if lvl <= 0 else "🧪 recruit and train heroes"
     return "not built yet" if lvl <= 0 else f"🗼 +{TOWER_WALLS[lvl]} walls"
 
 
@@ -4130,6 +4422,8 @@ def bld_effect(key: str, lvl: int) -> str:
 def _bld_body(key: str) -> None:
     me = st.session_state.user
     row = user_row(me["username"])
+    if key == "lab" and bld_level(row, "lab") >= 1:
+        return _lab_body(row)
     icon, name, desc = BLD_INFO[key]
     lvl, mx = bld_level(row, key), BLD_MAX[key]
     inf = upg_info(row, key)
@@ -4295,7 +4589,12 @@ def my_base(row: dict, prefix: str) -> None:
             season_bank_dialog()
         for key in BLD_COL:
             if st.button("·", key=f"{prefix}_bt_{key}"):
+                if key == "lab":
+                    st.session_state.lab_view = ""
                 BLD_DIALOGS[key]()
+        if hero_level(row) > 0 and st.button("·", key=f"{prefix}_bt_hero"):
+            st.session_state.lab_view = "commander"
+            BLD_DIALOGS["lab"]()
 
 
 def page_nest() -> None:
