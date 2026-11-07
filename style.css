@@ -937,7 +937,8 @@ textarea::placeholder {
 }
 
 /* ---- CTA & special buttons (3D game style) ---- */
-.st-key-timeout {
+.st-key-timeout,
+.st-key-away {
   position: absolute !important;
   left: -9999px;
   height: 0;
@@ -2231,3 +2232,30 @@ div[role="dialog"] .records .rec { color: #fff; }
 .lb-cmd i { display: block; width: 26px; height: 32px; background-size: contain; background-repeat: no-repeat; background-position: center; }
 .lb-cmd i.off { filter: brightness(0) opacity(.5); }
 .lb-cmd small { font-size: .68rem; font-weight: 700; opacity: .95; white-space: nowrap; }
+
+
+/* =====================================================================
+   v7: anti-cheat alarm (red warning)
+   ===================================================================== */
+.glass.alarm-red {
+  text-align: center;
+  background: linear-gradient(160deg, rgba(200, 25, 25, .95), rgba(120, 15, 15, .97)) !important;
+  border: 2.5px solid #ff5a5a !important;
+  color: #fff;
+  animation: alarm-flash .7s ease-in-out infinite alternate, alarm-shake .5s 2;
+}
+.alarm-red h2 { color: #fff; font-size: 1.7rem; margin: .1rem 0 .35rem; letter-spacing: 1.5px; text-shadow: 0 0 14px #ff9a9a; }
+.alarm-red p { color: #fff; font-size: 1rem; line-height: 1.45; margin: .35rem 0; }
+.alarm-ico { font-size: 3.2rem; line-height: 1.1; animation: alarm-pulse .6s ease-in-out infinite alternate; }
+@keyframes alarm-flash {
+  0% { box-shadow: 0 0 14px rgba(255, 60, 60, .6), var(--shadow); }
+  100% { box-shadow: 0 0 44px rgba(255, 60, 60, 1), var(--shadow); }
+}
+@keyframes alarm-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-6px); }
+  80% { transform: translateX(6px); }
+}
+@keyframes alarm-pulse { from { transform: scale(1); } to { transform: scale(1.25); } }
