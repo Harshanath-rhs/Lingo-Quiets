@@ -2259,3 +2259,105 @@ div[role="dialog"] .records .rec { color: #fff; }
   80% { transform: translateX(6px); }
 }
 @keyframes alarm-pulse { from { transform: scale(1); } to { transform: scale(1.25); } }
+
+/* ======================= v8: home 2x2 buttons + Reading Arena ======================= */
+.st-key-cta_grid {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr;
+  gap: .55rem !important;
+}
+.st-key-cta_grid > div { min-width: 0 !important; width: auto !important; }
+.st-key-cta_grid .stButton, .st-key-cta_grid .stButton > button { width: 100% !important; }
+.st-key-cta_grid .stButton > button,
+.st-key-cta_grid button {
+  min-height: 96px !important;
+  padding: .45rem .25rem !important;
+  line-height: 1.15 !important;
+}
+.st-key-cta_grid button p {
+  white-space: pre-line;
+  text-align: center;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+}
+.st-key-cta_grid button p::first-line { font-size: 2.2rem; line-height: 1.3; }
+
+/* Battle Arena: red */
+.st-key-cta_battle .stButton > button,
+.st-key-cta_battle button {
+  background: linear-gradient(180deg, #ff9a9a 0%, #ef4444 50%, #b91c1c 100%) !important;
+  background-color: #ef4444 !important;
+  border: none !important;
+  border-bottom: 2px solid #7f1d1d !important;
+  border-radius: 18px !important;
+  color: #fff !important;
+  box-shadow: 0 2px 0 #7f1d1d, 0 6px 16px rgba(239, 68, 68, .45), inset 0 1px 0 rgba(255, 255, 255, .3) !important;
+}
+/* Reading Arena: green (glows when a Reading Charge is ready) */
+.st-key-cta_read .stButton > button,
+.st-key-cta_read button,
+.st-key-cta_read_hot .stButton > button,
+.st-key-cta_read_hot button {
+  background: linear-gradient(180deg, #6ee7b7 0%, #10b981 50%, #047857 100%) !important;
+  background-color: #10b981 !important;
+  border: none !important;
+  border-bottom: 2px solid #065f46 !important;
+  border-radius: 18px !important;
+  color: #fff !important;
+  box-shadow: 0 2px 0 #065f46, 0 6px 16px rgba(16, 185, 129, .45), inset 0 1px 0 rgba(255, 255, 255, .3) !important;
+}
+.st-key-cta_read_hot .stButton > button,
+.st-key-cta_read_hot button { animation: read-glow 1s ease-in-out infinite alternate; }
+@keyframes read-glow {
+  0% { box-shadow: 0 2px 0 #065f46, 0 0 12px rgba(52, 211, 153, .5), inset 0 1px 0 rgba(255, 255, 255, .3); }
+  100% { box-shadow: 0 2px 0 #065f46, 0 0 28px rgba(52, 211, 153, .95), inset 0 1px 0 rgba(255, 255, 255, .4); }
+}
+/* other 3D buttons keep their own look inside the grid (quest pink, story blue/orange) */
+.st-key-cta_grid .st-key-cta_story button,
+.st-key-cta_grid .st-key-cta_story_hot button { border-radius: 18px !important; }
+
+/* nav + start button */
+.st-key-nav_reading .stButton > button, .st-key-nav_reading button {
+  background: linear-gradient(180deg, #6ee7b7, #047857) !important;
+  background-color: #047857 !important; border: none !important; color: #fff !important; font-weight: 700 !important;
+}
+.st-key-rd_start .stButton > button,
+.st-key-rd_start button {
+  background: linear-gradient(180deg, #6ee7b7 0%, #10b981 55%, #047857 100%) !important;
+  background-color: #10b981 !important;
+  border: none !important;
+  border-bottom: 2px solid #065f46 !important;
+  border-radius: 18px !important;
+  color: #fff !important;
+  font-size: 1.05rem !important;
+  font-weight: 700 !important;
+  min-height: 56px !important;
+  box-shadow: 0 2px 0 #065f46, 0 6px 16px rgba(16, 185, 129, .45), inset 0 1px 0 rgba(255, 255, 255, .3) !important;
+}
+.st-key-rd_back0 .stButton > button, .st-key-rd_back0 button,
+.st-key-rd_back1 .stButton > button, .st-key-rd_back1 button,
+.st-key-rd_back1b .stButton > button, .st-key-rd_back1b button,
+.st-key-rd_back2 .stButton > button, .st-key-rd_back2 button,
+.st-key-rd_cancel .stButton > button, .st-key-rd_cancel button,
+.st-key-rd_again .stButton > button, .st-key-rd_again button,
+.st-key-rd_home .stButton > button, .st-key-rd_home button {
+  background: linear-gradient(180deg, #a78bfa 0%, #7c3aed 100%) !important;
+  background-color: #7c3aed !important;
+  border: none !important;
+  border-bottom: 2px solid #5b21b6 !important;
+  color: #fff !important;
+  font-weight: 600 !important;
+  box-shadow: 0 2px 0 #5b21b6, 0 6px 14px rgba(124, 58, 237, .35) !important;
+}
+
+/* result page: how the child read */
+.rd-text { font-size: 1.12rem; line-height: 2.1; }
+.rw { display: inline-block; padding: 0 4px; margin: 0 1px; border-radius: 7px; }
+.rw.ok { color: #7dffc0; }
+.rw.miss { background: rgba(255, 93, 115, .35); text-decoration: underline wavy rgba(255, 255, 255, .75); }
+.chips .chip {
+  display: inline-block; background: rgba(255, 210, 63, .25); border: 1px solid rgba(255, 210, 63, .55);
+  border-radius: 999px; padding: .05rem .6rem; margin: .15rem .2rem 0 0; font-weight: 600;
+}
