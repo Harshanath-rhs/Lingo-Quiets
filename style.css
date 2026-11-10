@@ -2361,3 +2361,32 @@ div[role="dialog"] .records .rec { color: #fff; }
   display: inline-block; background: rgba(255, 210, 63, .25); border: 1px solid rgba(255, 210, 63, .55);
   border-radius: 999px; padding: .05rem .6rem; margin: .15rem .2rem 0 0; font-weight: 600;
 }
+
+/* =====================================================================
+   v8.1: Commander at the left of the profile/base card (no glow, level under his feet), bigger still nest
+   ===================================================================== */
+/* nest row: the nest is moved a little to the right so the left side is free for the Commander */
+.scene-nest { height: 200px; padding-left: 14%; }
+[class*="st-key-base_"] [class*="_bt_nest"] { height: 200px !important; left: 34%; width: 46% !important; }
+[class*="st-key-base_"] [class*="_bt_hero"] { height: 150px !important; width: 32% !important; left: .5rem; }
+
+/* Owl nest: bigger, and it stays still (only the glow pulses) */
+.scene-nest .nest-art { width: 150px !important; height: 150px !important; }
+.scene-nest .nest-art.emoji { font-size: 5.4rem !important; line-height: 150px !important; }
+.nest-wrap::before { width: 190px; height: 150px; }
+.scene-nest.max .nest-wrap::before { width: 210px; height: 170px; }
+.scene-nest .nest-wrap .nest-art { animation: nest-glow 3s ease-in-out infinite !important; }
+
+/* Commander: at the left edge of the card. Size: change these two numbers (now about 2/3 of the earlier size) */
+.cmd-figure { left: 0; bottom: .25rem; width: 31%; max-width: 133px; display: flex; flex-direction: column-reverse; align-items: center; justify-content: flex-start; }
+.cmd-figure .cmd-img { max-height: 120px; width: 100% !important; }
+
+/* no glow at all */
+.cmd-figure .cmd-halo { display: none !important; }
+.cmd-figure .cmd-img { filter: none !important; }
+
+/* level label: right under his feet (make the minus number bigger to pull it even closer) */
+.cmd-figure .cmd-lv {
+  margin: -6px 0 0 0; padding: 1px 9px; font-size: .72rem;
+  border: 1px solid rgba(255, 255, 255, .55); box-shadow: none; text-shadow: none;
+}
